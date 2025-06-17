@@ -5,3 +5,4 @@ mlruns/
 .vscode/
 *.pyc
 venv/
+datasets/
