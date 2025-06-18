@@ -4,6 +4,7 @@ import mlflow
 import numpy as np
 import torch
 from torch.optim import *
+from torchinfo import summary
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
@@ -110,6 +111,9 @@ def test(args, config_parser):
         worker_init_fn=config_parser.worker_init_fn,
         **kwargs,
     )
+
+    # print the summary of the model we are going to evaluate
+    print(model)
 
     # inference loop
     idx_AEE = 0
