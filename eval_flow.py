@@ -113,7 +113,7 @@ def test(args, config_parser):
     )
 
     # print the summary of the model we are going to evaluate
-    with torch.no_grad():
+    """with torch.no_grad():
         printed_summary = False 
         while True:
             for inputs in dataloader:
@@ -128,7 +128,7 @@ def test(args, config_parser):
                         device=device,
                         col_names=["input_size", "output_size", "num_params"],
                     )
-                    printed_summary = True 
+                    printed_summary = True"""
 
     # inference loop
     idx_AEE = 0
