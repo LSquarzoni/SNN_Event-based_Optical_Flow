@@ -112,24 +112,6 @@ def test(args, config_parser):
         **kwargs,
     )
 
-    # print the summary of the model we are going to evaluate
-    """with torch.no_grad():
-        printed_summary = False 
-        while True:
-            for inputs in dataloader:
-
-                if not printed_summary:
-                    event_voxel = inputs["event_voxel"].to(device)
-                    event_cnt = inputs["event_cnt"].to(device)
-
-                    summary(
-                        model,
-                        input_data=[event_voxel, event_cnt],
-                        device=device,
-                        col_names=["input_size", "output_size", "num_params"],
-                    )
-                    printed_summary = True"""
-
     # inference loop
     idx_AEE = 0
     val_results = {}
