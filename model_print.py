@@ -129,3 +129,27 @@ def test(args, config_parser):
                         col_names=["input_size", "output_size", "num_params"],
                     )
                     printed_summary = True
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("runid", help="mlflow run")
+    parser.add_argument(
+        "--config",
+        default="configs/eval_flow.yml",
+        help="config file, overwrites mlflow settings",
+    )
+    parser.add_argument(
+        "--path_mlflow",
+        default="",
+        help="location of the mlflow ui",
+    )
+    parser.add_argument("--path_results", default="results_inference/")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="don't save stuff",
+    )
+    args = parser.parse_args()
+
+    # launch testing
+    test(args, YAMLParser(args.config))
