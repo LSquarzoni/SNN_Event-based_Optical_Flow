@@ -1,5 +1,5 @@
 data:
-    path: datasets/data/MVSEC/
+    path: ../../../usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
@@ -15,10 +15,10 @@ loader:
     batch_size: 1
     resolution: [256, 256] # H x W
     augment: []
-    gpu: 0
+    gpu: 1
 
 vis:
-    enabled: True
+    enabled: False
     px: 400
     bars: True
     activity: False

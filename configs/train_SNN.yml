@@ -35,15 +35,15 @@ optimizer:
 
 loader:
     n_epochs: 100
-    batch_size: 8
-    resolution: [128, 128] # H x W
+    batch_size: 2
+    resolution: [256, 256] # H x W
     augment: ["Horizontal", "Vertical", "Polarity"]
     augment_prob: [0.5, 0.5, 0.5]
-    gpu: 0
+    gpu: 3
 
 vis:
     verbose: True
-    enabled: False
+    enabled: True
     px: 400
     store_grads: False
 
