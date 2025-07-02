@@ -675,16 +675,3 @@ class NEE(BaseValidationLoss):
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return NEE, percent_NEE
-    
-    
-class AE(BaseValidationLoss):
-    """
-    Angular Error loss.
-    """
-
-    def __init__(self, config, device, flow_scaling=128):
-        super().__init__(config, device, flow_scaling)
-
-    @property
-    def num_events(self):
-        return float("inf")
