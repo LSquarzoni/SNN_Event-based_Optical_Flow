@@ -36,12 +36,7 @@ def create_model_dir(path_results, runid):
 def save_model(model):
     model.eval()
     
-    # Dummy input tensors matching your model's expected input
-    dummy_voxel = torch.randn(1, 2, 128, 128, device=next(model.parameters()).device)
-    dummy_cnt = torch.randn(1, 2, 128, 128, device=next(model.parameters()).device)
-    input_example = {"event_voxel": dummy_voxel, "event_cnt": dummy_cnt}
-    
-    mlflow.pytorch.log_model(model, name="model", input_example=input_example)
+    mlflow.pytorch.log_model(model, name="model")
 
 
 def save_csv(data, fname):

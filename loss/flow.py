@@ -626,6 +626,7 @@ class AEE(BaseValidationLoss):
         percent_AEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return AEE, percent_AEE
+    
 
 class NEE(BaseValidationLoss):
     """
@@ -647,7 +648,7 @@ class NEE(BaseValidationLoss):
         flow_mag = flow.pow(2).sum(1).sqrt()
 
         # compute NEE
-        error = (flow - self._gtflow).pow(2).sum(1).sqrt()
+        error = ((flow - self._gtflow).pow(2).sum(1).sqrt())/(min(norm(flow),norm(self._gtflow))+0.01)
 
         # NEE not computed in pixels without events
         event_mask = self._event_mask[:, -1, :, :].bool()
@@ -674,3 +675,16 @@ class NEE(BaseValidationLoss):
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return NEE, percent_NEE
+    
+    
+class AE(BaseValidationLoss):
+    """
+    Angular Error loss.
+    """
+
+    def __init__(self, config, device, flow_scaling=128):
+        super().__init__(config, device, flow_scaling)
+
+    @property
+    def num_events(self):
+        return float("inf")
