@@ -41,7 +41,7 @@ def save_model(model):
     dummy_cnt = torch.randn(1, 2, 128, 128, device=next(model.parameters()).device)
     input_example = {"event_voxel": dummy_voxel, "event_cnt": dummy_cnt}
     
-    mlflow.pytorch.log_model(model, name="model", input_example=input_exampl)
+    mlflow.pytorch.log_model(model, name="model", input_example=input_example)
 
 
 def save_csv(data, fname):
