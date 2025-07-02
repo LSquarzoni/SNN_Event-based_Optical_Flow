@@ -626,3 +626,51 @@ class AEE(BaseValidationLoss):
         percent_AEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return AEE, percent_AEE
+
+class NEE(BaseValidationLoss):
+    """
+    Normalized Endpoint Error (Normalized Euclidean distance) loss.
+    """
+
+    def __init__(self, config, device, flow_scaling=128):
+        super().__init__(config, device, flow_scaling)
+
+    @property
+    def num_events(self):
+        return float("inf")
+
+    def forward(self):
+
+        # convert flow
+        flow = self._flow_map[-1] * self.flow_scaling
+        flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
+        flow_mag = flow.pow(2).sum(1).sqrt()
+
+        # compute NEE
+        error = (flow - self._gtflow).pow(2).sum(1).sqrt()
+
+        # NEE not computed in pixels without events
+        event_mask = self._event_mask[:, -1, :, :].bool()
+
+        # NEE not computed in pixels without valid ground truth
+        gtflow_mask_x = self._gtflow[:, 0, :, :] == 0.0
+        gtflow_mask_y = self._gtflow[:, 1, :, :] == 0.0
+        gtflow_mask = gtflow_mask_x * gtflow_mask_y
+        gtflow_mask = ~gtflow_mask
+
+        # mask NEE and flow
+        mask = event_mask * gtflow_mask
+        mask = mask.view(self._flow_map[-1].shape[0], -1)
+        error = error.view(self._flow_map[-1].shape[0], -1)
+        flow_mag = flow_mag.view(self._flow_map[-1].shape[0], -1)
+        error = error * mask
+        flow_mag = flow_mag * mask
+
+        # compute NEE and percentage of outliers
+        num_valid_px = torch.sum(mask, dim=1)
+        NEE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
+
+        outliers = (error > 3.0) * (error > 0.05 * flow_mag)  # NEE larger than 3px and 5% of the flow magnitude
+        percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
+
+        return NEE, percent_NEE
