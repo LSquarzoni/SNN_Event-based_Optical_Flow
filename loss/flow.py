@@ -674,4 +674,5 @@ class NEE(BaseValidationLoss):
         outliers = (error > 3.0) * (error > 0.05 * flow_mag)  # NEE larger than 3px and 5% of the flow magnitude
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
-        return NEE, percent_NEE
+        #return NEE, percent_NEE
+        return NEE
