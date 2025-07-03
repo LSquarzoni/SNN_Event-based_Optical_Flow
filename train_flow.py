@@ -50,6 +50,7 @@ def train(args, config_parser):
     mlflow.log_params(config)
     mlflow.log_param("prev_runid", args.prev_runid)
     config = config_parser.combine_entries(config)
+    mlflow.pytorch.autolog()
     print("MLflow dir:", mlflow.active_run().info.artifact_uri[:-9])
 
     # log git diff
@@ -109,7 +110,7 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if train_loss / (data.samples + 1) < best_loss:
-                        save_model(model)
+                        #save_model(model)
                         best_loss = train_loss / (data.samples + 1)
 
                 data.epoch += 1

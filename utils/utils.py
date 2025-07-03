@@ -3,6 +3,7 @@ import os
 import mlflow
 import pandas as pd
 import torch
+import numpy as np
 
 
 def load_model(prev_runid, model, device):
@@ -34,7 +35,6 @@ def create_model_dir(path_results, runid):
 
 
 def save_model(model):
-    model.eval()
     
     mlflow.pytorch.log_model(model, name="model")
 
