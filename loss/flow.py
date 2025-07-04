@@ -678,3 +678,29 @@ class NEE(BaseValidationLoss):
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return NEE, percent_NEE
+    
+class AE(BaseValidationLoss):
+    """
+    Angular Error loss.
+    """
+
+    def __init__(self, config, device, flow_scaling=128):
+        super().__init__(config, device, flow_scaling)
+
+    @property
+    def num_events(self):
+        return float("inf")
+    
+    def forward(self):
+
+        # convert flow
+        flow = self._flow_map[-1] * self.flow_scaling
+        flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
+        flow_mag = flow.pow(2).sum(1).sqrt()
+        flow_norm = torch.norm(flow, dim=1, keepdim=True)
+        gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
+        
+        # compute AE
+        error = np.arccos((flow[0]*self._gtflow[0]+flow[1]*self._gtflow[1]) / ((flow_norm * gtflow_norm) + 0.01))
+        
+        return AE
