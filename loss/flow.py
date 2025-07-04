@@ -674,7 +674,7 @@ class NEE(BaseValidationLoss):
         num_valid_px = torch.sum(mask, dim=1)
         NEE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
 
-        outliers = (error > 3.0) * (error > 0.05 * flow_mag)  # NEE larger than 3px and 5% of the flow magnitude
+        outliers = (error > 3.0) * (error > 0.05 * flow_mag)  # NEE larger than 3px and 5% of the flow magnitude ??
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return NEE, percent_NEE
