@@ -110,7 +110,7 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if train_loss / (data.samples + 1) < best_loss:
-                        #save_model(model)
+                        mlflow.pytorch.save_model(model, "mlruns/0/models")
                         best_loss = train_loss / (data.samples + 1)
 
                 data.epoch += 1

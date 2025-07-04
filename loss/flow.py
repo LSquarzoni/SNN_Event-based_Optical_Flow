@@ -648,7 +648,10 @@ class NEE(BaseValidationLoss):
         flow_mag = flow.pow(2).sum(1).sqrt()
 
         # compute NEE
-        error = ((flow - self._gtflow).pow(2).sum(1).sqrt())/(min(norm(flow),norm(self._gtflow))+0.01)
+        flow_norm = torch.norm(flow, dim=1, keepdim=True)
+        gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
+        
+        error = torch.norm(flow - self._gtflow, dim=1) / (torch.min(flow_norm, gtflow_norm) + 0.01)
 
         # NEE not computed in pixels without events
         event_mask = self._event_mask[:, -1, :, :].bool()
@@ -674,5 +677,4 @@ class NEE(BaseValidationLoss):
         outliers = (error > 3.0) * (error > 0.05 * flow_mag)  # NEE larger than 3px and 5% of the flow magnitude
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
-        #return NEE, percent_NEE
-        return NEE
+        return NEE, percent_NEE

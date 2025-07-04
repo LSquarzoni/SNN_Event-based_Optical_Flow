@@ -8,7 +8,7 @@ from torchinfo import summary
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import FWL, RSAT, AEE
+from loss.flow import FWL, RSAT, AEE, NEE
 from models.model import (
     FireNet,
     RNNFireNet,
@@ -189,11 +189,11 @@ def test(args, config_parser):
                                         val_results[filename][metric] = {}
                                         val_results[filename][metric]["metric"] = 0
                                         val_results[filename][metric]["it"] = 0
-                                        if metric == "AEE":
+                                        if metric in ["AEE", "NEE"]:
                                             val_results[filename][metric]["percent"] = 0
 
                                 val_results[filename][metric]["it"] += 1
-                                if metric == "AEE":
+                                if metric in ["AEE", "NEE"]:
                                     val_results[filename][metric]["metric"] += val_metric[0][batch].cpu().numpy()
                                     val_results[filename][metric]["percent"] += val_metric[1][batch].cpu().numpy()
                                 else:
@@ -248,11 +248,11 @@ def test(args, config_parser):
     if not args.debug and "metrics" in config.keys():
         for metric in config["metrics"]["name"]:
             results[metric] = {}
-            if metric == "AEE":
+            if metric in ["AEE", "NEE"]:
                 results[metric + "_percent"] = {}
             for key in val_results.keys():
                 results[metric][key] = str(val_results[key][metric]["metric"] / val_results[key][metric]["it"])
-                if metric == "AEE":
+                if metric in ["AEE", "NEE"]:
                     results[metric + "_percent"][key] = str(
                         val_results[key][metric]["percent"] / val_results[key][metric]["it"]
                     )
