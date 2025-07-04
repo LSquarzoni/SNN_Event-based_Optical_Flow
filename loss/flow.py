@@ -703,4 +703,8 @@ class AE(BaseValidationLoss):
         # compute AE
         error = np.arccos((flow[0]*self._gtflow[0]+flow[1]*self._gtflow[1]) / ((flow_norm * gtflow_norm) + 0.01))
         
+        
+        
+        
+        
         return AE
