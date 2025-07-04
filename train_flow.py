@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import mlflow
 import torch
@@ -33,6 +34,12 @@ from models.model import (
 from utils.gradients import get_grads
 from utils.utils import load_model, save_csv, save_diff, save_model
 from utils.visualization import Visualization
+
+def get_next_model_folder(base_path="mlruns/0/models/"):
+    index = 0
+    while os.path.exists(os.path.join(base_path, str(index))):
+        index += 1
+    return os.path.join(base_path, str(index))
 
 
 def train(args, config_parser):
@@ -110,7 +117,8 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if train_loss / (data.samples + 1) < best_loss:
-                        mlflow.pytorch.save_model(model, "mlruns/0/models")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/")
+                        mlflow.pytorch.save_model(model, model_save_path)
                         best_loss = train_loss / (data.samples + 1)
 
                 data.epoch += 1
