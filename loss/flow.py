@@ -674,14 +674,14 @@ class NEE(BaseValidationLoss):
         num_valid_px = torch.sum(mask, dim=1)
         NEE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
 
-        outliers = (error > 3.0) * (error > 0.05 * flow_mag)  # NEE larger than 3px and 5% of the flow magnitude ??
+        outliers = (error > 0.5)  # NEE larger than 50% of the flow or ground truth magnitude, implies a significant angular mismatch
         percent_NEE = outliers.sum() / (num_valid_px + 1e-9)
 
         return NEE, percent_NEE
     
 class AE(BaseValidationLoss):
     """
-    Angular Error loss.
+    Angular Error loss: angle between predicted and ground truth flow vectors.
     """
 
     def __init__(self, config, device, flow_scaling=128):
@@ -696,15 +696,38 @@ class AE(BaseValidationLoss):
         # convert flow
         flow = self._flow_map[-1] * self.flow_scaling
         flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
-        flow_mag = flow.pow(2).sum(1).sqrt()
         flow_norm = torch.norm(flow, dim=1, keepdim=True)
         gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
         
+        # Dot product
+        dot = torch.sum(flow * self._gtflow, dim=1)
+        
         # compute AE
-        error = np.arccos((flow[0]*self._gtflow[0]+flow[1]*self._gtflow[1]) / ((flow_norm * gtflow_norm) + 0.01))
+        cos_angle = (flow_norm * gtflow_norm) / (dot + 0.01)
+        cos_angle = torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5)
+        error = torch.acos(cos_angle) # result in radiants
         
-        
-        
-        
-        
-        return AE
+        # AE not computed in pixels without events
+        event_mask = self._event_mask[:, -1, :, :].bool()
+
+        # AE not computed in pixels without valid ground truth
+        gtflow_mask_x = self._gtflow[:, 0, :, :] == 0.0
+        gtflow_mask_y = self._gtflow[:, 1, :, :] == 0.0
+        gtflow_mask = ~(gtflow_mask_x & gtflow_mask_y)
+
+        # Apply masks
+        mask = event_mask & gtflow_mask
+        mask = mask.view(flow.shape[0], -1)
+        error = error.view(flow.shape[0], -1)
+
+        error = error * mask
+
+        # Mean angular error per sample
+        num_valid_px = torch.sum(mask, dim=1)
+        AE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
+
+        # Outlier definition: angular error > 30 degrees (π/6 rad)
+        outliers = error > (np.pi / 6)
+        percent_AE = outliers.sum(dim=1) / (num_valid_px + 1e-9)
+
+        return AE, percent_AE

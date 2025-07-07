@@ -117,8 +117,8 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if train_loss / (data.samples + 1) < best_loss:
-                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/")
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/")
+                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/") # model: LIFFireNet
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
                         mlflow.pytorch.save_model(model, model_save_path)
                         best_loss = train_loss / (data.samples + 1)
 
