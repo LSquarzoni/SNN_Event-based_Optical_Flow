@@ -91,8 +91,11 @@ def test(args, config_parser):
         vis = Visualization(config, eval_id=eval_id, path_results=path_results)
 
     # model initialization and settings
+    model_path_dir = "mlruns/0/models/LIFFireNet/35/data/model.pth" # LIF FireNet
+    #model_path_dir = "mlruns/0/models/LIFEVFlowNet/24/data/model.pth" # LIF EV-FlowNet
+    
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    model = load_model(args.runid, model, device)
+    model = load_model(model_path_dir, args.runid, model, device)
     model.eval()
 
     # validation metric
