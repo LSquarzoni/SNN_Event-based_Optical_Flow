@@ -6,14 +6,17 @@ import torch
 import numpy as np
 
 
-def load_model(model_path_dir, prev_runid, model, device):
+def load_model(model_path_dir="", prev_runid, model, device):
     try:
         run = mlflow.get_run(prev_runid)
     except:
         return model
-
-    #model_dir = run.info.artifact_uri + "/model/data/model.pth"
-    model_dir = model_path_dir
+    
+    if model_path_dir == "":
+        model_dir = run.info.artifact_uri + "/model/data/model.pth"
+    else:
+        model_dir = model_path_dir
+        
     if model_dir[:7] == "file://":
         model_dir = model_dir[7:]
 
