@@ -630,7 +630,7 @@ class AEE(BaseValidationLoss):
 
 class NEE(BaseValidationLoss):
     """
-    Normalized Endpoint Error (Normalized Euclidean distance) loss.
+    Normalized Endpoint Error (Normalized Euclidean distance) loss: AEE divided by either the ground truth or the flow magnitude (more "absolute" error).
     """
 
     def __init__(self, config, device, flow_scaling=128):
