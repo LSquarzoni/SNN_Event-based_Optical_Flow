@@ -53,11 +53,11 @@ def train(args, config_parser):
 
     # log config
     mlflow.set_experiment(config["experiment"])
+    mlflow.autolog()
     mlflow.start_run()
     mlflow.log_params(config)
     mlflow.log_param("prev_runid", args.prev_runid)
     config = config_parser.combine_entries(config)
-    mlflow.pytorch.autolog()
     print("MLflow dir:", mlflow.active_run().info.artifact_uri[:-9])
 
     # log git diff
