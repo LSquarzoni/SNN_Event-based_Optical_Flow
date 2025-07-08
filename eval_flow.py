@@ -95,7 +95,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet/24/data/model.pth" # LIF EV-FlowNet
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    model = load_model(model_path_dir, args.runid, model, device)
+    model = load_model(args.runid, model, device, model_path_dir)
     model.eval()
 
     # validation metric

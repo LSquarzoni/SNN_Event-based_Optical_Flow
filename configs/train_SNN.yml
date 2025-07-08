@@ -1,14 +1,15 @@
 experiment: Default
 
 data:
-    path: ../../../usr/scratch/badile13/amarchei/training/
+    #path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
+    path: /scratch/msc25h1/training/ # path to dataset in my scratch
     mode: events # events
     window: 1000 # events
     window_loss: 10000 # events
 
 model:
-    #name: LIFFireNet # for other models available, see models/model.py
-    name: SpikingRecEVFlowNet
+    name: LIFFireNet # for other models available, see models/model.py
+    #name: SpikingRecEVFlowNet
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input

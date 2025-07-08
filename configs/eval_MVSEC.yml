@@ -1,5 +1,5 @@
 data:
-    path: ../../../usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used

@@ -6,7 +6,7 @@ import torch
 import numpy as np
 
 
-def load_model(model_path_dir="", prev_runid, model, device):
+def load_model(prev_runid, model, device, model_path_dir=""):
     try:
         run = mlflow.get_run(prev_runid)
     except:

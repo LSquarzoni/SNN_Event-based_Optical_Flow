@@ -95,6 +95,8 @@ def train(args, config_parser):
     optimizer.zero_grad()
 
     # simulation variables
+    patience = 5
+    epochs_without_improvement = 0
     train_loss = 0
     best_loss = 1.0e6
     end_train = False
@@ -113,14 +115,19 @@ def train(args, config_parser):
                 optimizer.zero_grad()
 
             if data.seq_num >= len(data.files):
-                mlflow.log_metric("loss", train_loss / (data.samples + 1), step=data.epoch)
+                avg_train_loss = train_loss / (data.samples + 1)
+                mlflow.log_metric("loss", avg_train_loss, step=data.epoch)
 
                 with torch.no_grad():
-                    if train_loss / (data.samples + 1) < best_loss:
-                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/") # model: LIFFireNet
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
+                    if avg_train_loss < best_loss - 1e-4:  # small delta to prevent stopping on tiny changes
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/") # model: LIFFireNet
+                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
+                        #model_save_path = get_next_model_folder("mlruns/0/models/test/")
                         mlflow.pytorch.save_model(model, model_save_path)
-                        best_loss = train_loss / (data.samples + 1)
+                        best_loss = avg_train_loss
+                        epochs_without_improvement = 0
+                    else:
+                        epochs_without_improvement += 1
 
                 data.epoch += 1
                 data.samples = 0
@@ -133,7 +140,8 @@ def train(args, config_parser):
                     grads_w = []
 
                 # finish training loop
-                if data.epoch == config["loader"]["n_epochs"]:
+                if data.epoch == config["loader"]["n_epochs"] or epochs_without_improvement >= patience:
+                    print(f"Stopping at epoch {data.epoch}.")
                     end_train = True
 
             # forward pass
