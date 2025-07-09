@@ -25,7 +25,7 @@ def load_model(prev_runid, model, device, model_path_dir=""):
         model.load_state_dict(model_loaded.state_dict())
         print("Model restored from " + prev_runid + "\n")
     else:
-        print("No model found at" + prev_runid + "\n")
+        print("No model found at " + prev_runid + "\n")
 
     return model
 

@@ -1,5 +1,6 @@
 data:
-    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+    path: datasets/MVSEC/h5/
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
@@ -18,11 +19,11 @@ loader:
     gpu: 1
 
 vis:
-    enabled: False
+    enabled: True
     px: 400
     bars: True
     activity: False
-    store: True
+    store: False
     store_interval: 6.0  # store every x seconds
     type: vectors # gradients or vectors
 
