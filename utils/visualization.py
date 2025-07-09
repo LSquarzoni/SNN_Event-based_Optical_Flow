@@ -73,7 +73,7 @@ class Visualization:
             flow = flow.detach()
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                flow_npy = self.flow_to_quiver(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1])
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
@@ -86,7 +86,7 @@ class Visualization:
             masked_window_flow = masked_window_flow.detach()
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                masked_window_flow_npy = self.flow_to_quiver(
+                masked_window_flow_npy = self.flow_to_vector(
                     masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
                 )
             else:
@@ -103,7 +103,7 @@ class Visualization:
             gtflow = gtflow.detach()
             gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                gtflow_npy = self.flow_to_quiver(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+                gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
             else:
                 gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
                 gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
@@ -198,7 +198,7 @@ class Visualization:
             flow = flow.detach()
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                flow_npy = self.flow_to_quiver(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1])
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
@@ -210,7 +210,7 @@ class Visualization:
             masked_window_flow = masked_window_flow.detach()
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                masked_window_flow_npy = self.flow_to_quiver(
+                masked_window_flow_npy = self.flow_to_vector(
                     masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
                 )
             else:
@@ -226,7 +226,7 @@ class Visualization:
             gtflow = gtflow.detach()
             gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                gtflow_npy = self.flow_to_quiver(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+                gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
             else:
                 gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
                 gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
@@ -286,7 +286,14 @@ class Visualization:
         return (255 * flow_rgb).astype(np.uint8)
     
     @staticmethod
-    def flow_to_quiver(flow_x, flow_y, step=8):
+    def flow_to_vector(flow_x, flow_y, step=8):
+        """
+        Use the optical flow to generate a matrix of vectors representing the direction 
+        and the magnitude of the optical flows.
+        :param flow_x: [H x W x 1] horizontal optical flow component
+        :param flow_y: [H x W x 1] vertical optical flow component
+        :return img: [H x W x 3] vector-encoded optical flow
+        """
         H, W = flow_x.shape
         Y, X = np.mgrid[0:H:step, 0:W:step]
         U = flow_x[::step, ::step]
