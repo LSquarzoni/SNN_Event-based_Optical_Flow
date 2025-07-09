@@ -95,7 +95,7 @@ def train(args, config_parser):
     optimizer.zero_grad()
 
     # simulation variables
-    patience = 5
+    patience = 7
     epochs_without_improvement = 0
     train_loss = 0
     best_loss = 1.0e6
