@@ -87,8 +87,9 @@ def test(args, config_parser):
     kwargs = config_parser.loader_kwargs
 
     # visualization tool
+    vis_type = config["vis"].get("type", "gradients")  # Default to "gradients" if not specified
     if config["vis"]["enabled"] or config["vis"]["store"]:
-        vis = Visualization(config, eval_id=eval_id, path_results=path_results)
+        vis = Visualization(config, eval_id=eval_id, path_results=path_results, vis_type=vis_type)
 
     # model initialization and settings
     model_path_dir = "mlruns/0/models/LIFFireNet/x/data/model.pth" # LIF FireNet

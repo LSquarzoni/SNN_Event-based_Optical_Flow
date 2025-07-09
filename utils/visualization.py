@@ -13,10 +13,13 @@ class Visualization:
     of multiple elements of the optical flow estimation and image reconstruction pipeline.
     """
 
-    def __init__(self, kwargs, eval_id=-1, path_results=None):
+    def __init__(self, kwargs, eval_id=-1, path_results=None, vis_type="gradients"):
         self.img_idx = 0
         self.px = kwargs["vis"]["px"]
         self.color_scheme = "green_red"  # gray / blue_red / green_red
+        self.vis_type = vis_type
+        self.last_store_ts = None  # for controlling store rate
+        self.store_interval = kwargs["vis"].get("store_interval", 5.0)  # seconds
 
         if eval_id >= 0 and path_results is not None:
             self.store_dir = path_results + "results/"
@@ -69,8 +72,11 @@ class Visualization:
         if flow is not None:
             flow = flow.detach()
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
-            flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
+            if self.vis_type == "vectors":
+                flow_npy = self.flow_to_quiver(flow_npy[:, :, 0], flow_npy[:, :, 1])
+            else:
+                flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
             cv2.namedWindow("Estimated Flow", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Estimated Flow", int(self.px), int(self.px))
             cv2.imshow("Estimated Flow", flow_npy)
@@ -79,10 +85,15 @@ class Visualization:
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            masked_window_flow_npy = self.flow_to_image(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
-            )
-            masked_window_flow_npy = cv2.cvtColor(masked_window_flow_npy, cv2.COLOR_RGB2BGR)
+            if self.vis_type == "vectors":
+                masked_window_flow_npy = self.flow_to_quiver(
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                )
+            else:
+                masked_window_flow_npy = self.flow_to_image(
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                )
+                masked_window_flow_npy = cv2.cvtColor(masked_window_flow_npy, cv2.COLOR_RGB2BGR)
             cv2.namedWindow("Estimated Flow - Eval window", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Estimated Flow - Eval window", int(self.px), int(self.px))
             cv2.imshow("Estimated Flow - Eval window", masked_window_flow_npy)
@@ -91,8 +102,11 @@ class Visualization:
         if gtflow is not None:
             gtflow = gtflow.detach()
             gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
-            gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
+            if self.vis_type == "vectors":
+                gtflow_npy = self.flow_to_quiver(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+            else:
+                gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+                gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
             cv2.namedWindow("Ground-truth Flow", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Ground-truth Flow", int(self.px), int(self.px))
             cv2.imshow("Ground-truth Flow", gtflow_npy)
@@ -132,6 +146,12 @@ class Visualization:
         gtflow = inputs["gtflow"] if "gtflow" in inputs.keys() else None
         height = events.shape[2]
         width = events.shape[3]
+        
+        # Skip saving if not enough time has passed
+        if ts is not None:
+            if self.last_store_ts is not None and (ts - self.last_store_ts) < self.store_interval:
+                return
+            self.last_store_ts = ts
 
         # check if new sequence
         path_to = self.store_dir + sequence + "/"
@@ -177,8 +197,11 @@ class Visualization:
         if flow is not None:
             flow = flow.detach()
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
-            flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
+            if self.vis_type == "vectors":
+                flow_npy = self.flow_to_quiver(flow_npy[:, :, 0], flow_npy[:, :, 1])
+            else:
+                flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
             filename = path_to + "flow/%09d.png" % self.img_idx
             cv2.imwrite(filename, flow_npy)
 
@@ -186,10 +209,15 @@ class Visualization:
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            masked_window_flow_npy = self.flow_to_image(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
-            )
-            masked_window_flow_npy = cv2.cvtColor(masked_window_flow_npy, cv2.COLOR_RGB2BGR)
+            if self.vis_type == "vectors":
+                masked_window_flow_npy = self.flow_to_quiver(
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                )
+            else:
+                masked_window_flow_npy = self.flow_to_image(
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                )
+                masked_window_flow_npy = cv2.cvtColor(masked_window_flow_npy, cv2.COLOR_RGB2BGR)
             filename = path_to + "flow_window/%09d.png" % self.img_idx
             cv2.imwrite(filename, masked_window_flow_npy)
 
@@ -197,8 +225,11 @@ class Visualization:
         if gtflow is not None:
             gtflow = gtflow.detach()
             gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
-            gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
+            if self.vis_type == "vectors":
+                gtflow_npy = self.flow_to_quiver(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+            else:
+                gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+                gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
             filename = path_to + "gtflow/%09d.png" % self.img_idx
             cv2.imwrite(filename, gtflow_npy)
 
@@ -253,6 +284,28 @@ class Visualization:
 
         flow_rgb = matplotlib.colors.hsv_to_rgb(hsv)
         return (255 * flow_rgb).astype(np.uint8)
+    
+    @staticmethod
+    def flow_to_quiver(flow_x, flow_y, step=8):
+        H, W = flow_x.shape
+        Y, X = np.mgrid[0:H:step, 0:W:step]
+        U = flow_x[::step, ::step]
+        V = flow_y[::step, ::step]
+
+        dpi = 100
+        figsize = (W / dpi, H / dpi)
+        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+        ax.imshow(np.zeros((H, W)), cmap='gray')
+        ax.quiver(X, Y, U, -V, angles='xy', scale_units='xy', scale=1, color='red', width=0.002)
+        ax.axis('off')
+        fig.tight_layout(pad=0)
+
+        fig.canvas.draw()
+
+        # Get RGBA image and convert to RGB
+        img = np.array(fig.canvas.renderer.buffer_rgba())[:, :, :3]
+        plt.close(fig)
+        return img
 
     @staticmethod
     def minmax_norm(x):
