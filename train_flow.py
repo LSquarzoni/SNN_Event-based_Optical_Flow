@@ -95,7 +95,7 @@ def train(args, config_parser):
     optimizer.zero_grad()
 
     # simulation variables
-    patience = 7
+    patience = 50
     epochs_without_improvement = 0
     train_loss = 0
     best_loss = 1.0e6
@@ -119,9 +119,9 @@ def train(args, config_parser):
                 mlflow.log_metric("loss", avg_train_loss, step=data.epoch)
 
                 with torch.no_grad():
-                    if avg_train_loss < best_loss - 1e-4:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/") # model: LIFFireNet
-                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
+                    if avg_train_loss < best_loss - 1e-6:  # small delta to prevent stopping on tiny changes
+                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet/") # model: LIFFireNet
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
                         #model_save_path = get_next_model_folder("mlruns/0/models/test/")
                         mlflow.pytorch.save_model(model, model_save_path)
                         best_loss = avg_train_loss
