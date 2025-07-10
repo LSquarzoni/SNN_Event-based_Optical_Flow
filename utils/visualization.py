@@ -327,7 +327,7 @@ class Visualization:
                     continue  # skip drawing short vectors
                 
                 end_x = int(j + dx * scale)
-                end_y = int(i - dy * scale)  # minus because image y-axis is top to bottom
+                end_y = int(i + dy * scale)
 
                 # Draw arrow
                 cv2.arrowedLine(img, (j, i), (end_x, end_y), (255, 255, 255), 1, tipLength=0.3)
