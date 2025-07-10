@@ -24,7 +24,7 @@ vis:
     bars: True
     activity: False
     store: False
-    store_interval: 10.0  # store every x seconds
+    store_interval: 5.0  # store every x seconds
     type: vectors # gradients or vectors
 
 hot_filter:
