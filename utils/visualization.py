@@ -73,7 +73,7 @@ class Visualization:
             flow = flow.detach()
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse")
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
@@ -87,7 +87,7 @@ class Visualization:
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
                 masked_window_flow_npy = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
                 )
             else:
                 masked_window_flow_npy = self.flow_to_image(
@@ -198,7 +198,7 @@ class Visualization:
             flow = flow.detach()
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
-                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse")
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
@@ -211,7 +211,7 @@ class Visualization:
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
             if self.vis_type == "vectors":
                 masked_window_flow_npy = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
                 )
             else:
                 masked_window_flow_npy = self.flow_to_image(
@@ -286,32 +286,52 @@ class Visualization:
         return (255 * flow_rgb).astype(np.uint8)
     
     @staticmethod
-    def flow_to_vector(flow_x, flow_y, step=8):
+    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2):
         """
         Use the optical flow to generate a matrix of vectors representing the direction 
-        and the magnitude of the optical flows.
+        and magnitude of the optical flows.
         :param flow_x: [H x W x 1] horizontal optical flow component
         :param flow_y: [H x W x 1] vertical optical flow component
-        :return img: [H x W x 3] vector-encoded optical flow
+        :param type: "dense" for ground truth, "sparse" for estimated optical flow
+        :param step: Sampling step for vector representation
+        :param scale: scaling factor for vector length
+        :param min_magnitude: minimum magnitude to draw a vector
+        :return img: [H x W x 3] vector-encoded optical flow image
         """
+        
+        if type == "sparse":
+            step = 6           
+            scale = 750.0      
+            min_magnitude = 0.01
+            arrow_color = (255, 255, 255)
+            thickness = 1
+            tip_length = 0.3
+        else:
+            arrow_color = (255, 255, 255)
+            thickness = 1
+            tip_length = 0.3
+            
         H, W = flow_x.shape
-        Y, X = np.mgrid[0:H:step, 0:W:step]
-        U = flow_x[::step, ::step]
-        V = flow_y[::step, ::step]
+        
+        # Create a black image
+        img = np.zeros((H, W, 3), dtype=np.uint8)
+        
+        # Sample the flow fields
+        for i in range(0, H, step):
+            for j in range(0, W, step):
+                dx = flow_x[i, j]
+                dy = flow_y[i, j]
+                mag = np.sqrt(dx**2 + dy**2)
 
-        dpi = 100
-        figsize = (W / dpi, H / dpi)
-        fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-        ax.imshow(np.zeros((H, W)), cmap='gray')
-        ax.quiver(X, Y, U, -V, angles='xy', scale_units='xy', scale=1, color='red', width=0.002)
-        ax.axis('off')
-        fig.tight_layout(pad=0)
+                if mag < min_magnitude:
+                    continue  # skip drawing short vectors
+                
+                end_x = int(j + dx * scale)
+                end_y = int(i - dy * scale)  # minus because image y-axis is top to bottom
 
-        fig.canvas.draw()
+                # Draw arrow
+                cv2.arrowedLine(img, (j, i), (end_x, end_y), (255, 255, 255), 1, tipLength=0.3)
 
-        # Get RGBA image and convert to RGB
-        img = np.array(fig.canvas.renderer.buffer_rgba())[:, :, :3]
-        plt.close(fig)
         return img
 
     @staticmethod
