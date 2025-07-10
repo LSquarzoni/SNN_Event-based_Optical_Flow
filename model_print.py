@@ -8,7 +8,7 @@ from torchinfo import summary
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import FWL, RSAT, AEE
+from loss.flow import FWL, RSAT, AEE, NEE, AE
 from models.model import (
     FireNet,
     RNNFireNet,
