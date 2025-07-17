@@ -223,8 +223,8 @@ def test(args, config_parser):
                 if config["vis"]["bars"]:
                     for bar in data.open_files_bar:
                         bar.next()
-                if config["vis"]["enabled"]:
-                    vis.update(inputs, flow_vis_unmasked, iwe, events_window_vis, masked_window_flow_vis, iwe_window_vis)
+                if config["vis"]["enabled"]: # flow_vis -> flow_vis_unmasked to show the unmasked flow
+                    vis.update(inputs, flow_vis, iwe, events_window_vis, masked_window_flow_vis, iwe_window_vis)
                 if config["vis"]["store"]:
                     sequence = data.files[data.batch_idx[0] % len(data.files)].split("/")[-1].split(".")[0]
                     vis.store(
