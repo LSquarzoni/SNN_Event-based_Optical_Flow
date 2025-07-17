@@ -81,7 +81,7 @@ class Visualization:
             cv2.resizeWindow("Estimated Flow", int(self.px), int(self.px))
             cv2.imshow("Estimated Flow", flow_npy)
 
-        # optical flow
+        # optical flow (masked)
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
@@ -205,7 +205,7 @@ class Visualization:
             filename = path_to + "flow/%09d.png" % self.img_idx
             cv2.imwrite(filename, flow_npy)
 
-        # optical flow
+        # optical flow (masked)
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))

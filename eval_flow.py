@@ -142,6 +142,7 @@ def test(args, config_parser):
                 )
 
                 # mask flow for visualization
+                flow_vis_unmasked = x["flow"][-1].clone()
                 flow_vis = x["flow"][-1].clone()
                 if model.mask:
                     flow_vis *= inputs["event_mask"].to(device)
@@ -223,7 +224,7 @@ def test(args, config_parser):
                     for bar in data.open_files_bar:
                         bar.next()
                 if config["vis"]["enabled"]:
-                    vis.update(inputs, flow_vis, iwe, events_window_vis, masked_window_flow_vis, iwe_window_vis)
+                    vis.update(inputs, flow_vis_unmasked, iwe, events_window_vis, masked_window_flow_vis, iwe_window_vis)
                 if config["vis"]["store"]:
                     sequence = data.files[data.batch_idx[0] % len(data.files)].split("/")[-1].split(".")[0]
                     vis.store(
