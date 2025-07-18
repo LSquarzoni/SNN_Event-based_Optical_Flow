@@ -7,16 +7,16 @@ import csv
 
 # Generate sparser events
 np.random.seed(42)
-num_events = 100              
+num_events = 500              
 grid_size = 10
-time_range = 100           
+time_range = 1000        
 
 xs = np.random.randint(0, grid_size, num_events)
 ys = np.random.randint(0, grid_size, num_events)
 ts = np.sort(np.random.rand(num_events) * time_range)
 
 polarities = np.random.choice([-1, 1], size=num_events)
-colors = ['lightskyblue' if p > 0 else 'coral' for p in polarities]
+colors = ["limegreen" if p > 0 else "r" for p in polarities]
 
 # Histograms
 hist_pos = np.zeros((grid_size, grid_size), dtype=int)
@@ -29,58 +29,115 @@ for x, y, p in zip(xs, ys, polarities):
         hist_neg[y, x] += 1
 
 # Plotting
-fig = plt.figure(figsize=(18, 5))
-
-# 3D scatter plot
-ax1 = fig.add_subplot(131, projection='3d')
+# 3D scatter plot (events)
+fig1 = plt.figure(figsize=(12, 6))
+ax1 = fig1.add_subplot(111, projection='3d')
 ax1.scatter(ts, ys, xs, c=colors, s=50)
+yy, xx = np.meshgrid(np.arange(grid_size), np.arange(grid_size))
+ts_plane = np.full_like(yy, 500)
+ax1.plot_surface(ts_plane, yy, xx, color='lightgray', alpha=0.3, zorder=0)
+ax1.set_xticks(np.arange(0, time_range + 1, 100))  # Show a tick every 100 ts
+ax1.set_yticklabels([])
+ax1.set_zticklabels([])
+'''legend_elements = [
+    Line2D([0], [0], marker='o', color='w', label='pol. +', markerfacecolor='limegreen', markersize=8),
+    Line2D([0], [0], marker='o', color='w', label='pol. -', markerfacecolor='r', markersize=8)
+] 
 
-ax1.set_yticks(np.arange(grid_size))
-ax1.set_zticks(np.arange(grid_size))
-ax1.set_xlabel('ts')
-ax1.set_ylabel('y')
-ax1.set_zlabel('x')
-ax1.set_title('event_list')
-ax1.grid(True)
-
-legend_elements = [
-    Line2D([0], [0], marker='o', color='w', label='pol. +', markerfacecolor='lightskyblue', markersize=8),
-    Line2D([0], [0], marker='o', color='w', label='pol. -', markerfacecolor='coral', markersize=8)
-]
-ax1.legend(handles=legend_elements, loc='upper left')
+ax1.legend(handles=legend_elements, loc='upper left') '''
+ax1.set_box_aspect(aspect = (3,1,1))
+plt.tight_layout()
+plt.show()
 
 # 3D positive histogram
-ax2 = fig.add_subplot(132, projection='3d')
+fig2 = plt.figure(figsize=(8, 6))
+ax2 = fig2.add_subplot(111, projection='3d')
 _x, _y = np.meshgrid(np.arange(grid_size), np.arange(grid_size))
 xpos = _x.ravel()
 ypos = _y.ravel()
 zpos = np.zeros_like(xpos)
 dx_pos = hist_pos.ravel()
-mask_pos = dx_pos > 0  # Only keep non-zero bars
-
-ax2.bar3d(zpos[mask_pos], ypos[mask_pos], xpos[mask_pos], dx=dx_pos[mask_pos], dy=0.8, dz=0.8, color='lightskyblue', alpha=0.7)
-ax2.set_zlabel('x')
-ax2.set_ylabel('y')
-ax2.set_xlabel('num.')
-ax2.set_title('positive event_cnt')
-ax2.xaxis.set_major_locator(MaxNLocator(integer=True))  # Positive event histogram
-
-# 3D negative histogram
-ax3 = fig.add_subplot(133, projection='3d')
-dx_neg = hist_neg.ravel()
-mask_neg = dx_neg > 0  # Only keep non-zero bars
-
-ax3.bar3d(zpos[mask_neg], ypos[mask_neg], xpos[mask_neg], dx=dx_neg[mask_neg], dy=0.8, dz=0.8, color='coral', alpha=0.7)
-ax3.set_zlabel('x')
-ax3.set_ylabel('y')
-ax3.set_xlabel('num.')
-ax3.set_title('negative event_cnt')
-ax3.xaxis.set_major_locator(MaxNLocator(integer=True))  # Negative event histogram
-
+mask_pos = dx_pos > 0
+ax2.bar3d(zpos[mask_pos], ypos[mask_pos], xpos[mask_pos], dx=dx_pos[mask_pos], dy=0.8, dz=0.8, color='limegreen', alpha=0.7)
+ax2.set_zlabel('')
+ax2.set_ylabel('')
+ax2.set_xlabel('')
+ax2.set_title('')
+ax2.set_xticklabels([])
+ax2.set_yticklabels([])
+ax2.set_zticklabels([])
+ax2.set_box_aspect(aspect = (1,1,1))
+ax2.xaxis.set_major_locator(MaxNLocator(integer=True))
 plt.tight_layout()
 plt.show()
 
-# Example settings
+# 3D negative histogram
+fig3 = plt.figure(figsize=(8, 6))
+ax3 = fig3.add_subplot(111, projection='3d')
+dx_neg = hist_neg.ravel()
+mask_neg = dx_neg > 0
+ax3.bar3d(zpos[mask_neg], ypos[mask_neg], xpos[mask_neg], dx=dx_neg[mask_neg], dy=0.8, dz=0.8, color='r', alpha=0.7)
+ax3.set_zlabel('')
+ax3.set_ylabel('')
+ax3.set_xlabel('')
+ax3.set_title('')
+ax3.set_xticklabels([])
+ax3.set_yticklabels([])
+ax3.set_zticklabels([])
+ax3.set_box_aspect(aspect = (1,1,1))
+ax3.xaxis.set_major_locator(MaxNLocator(integer=True))
+plt.tight_layout()
+plt.show()
+
+# smaller time interval accumulation
+fig4, axes = plt.subplots(1, 10, figsize=(28, 5), subplot_kw={'projection': '3d'})
+interval = time_range // 10
+
+for i in range(10):
+    t_start = i * interval
+    t_end = (i + 1) * interval
+    mask_pos = (ts >= t_start) & (ts < t_end) & (polarities > 0)
+    mask_neg = (ts >= t_start) & (ts < t_end) & (polarities < 0)
+    xs_pos = xs[mask_pos]
+    ys_pos = ys[mask_pos]
+    xs_neg = xs[mask_neg]
+    ys_neg = ys[mask_neg]
+    
+    hist_pos_interval = np.zeros((grid_size, grid_size), dtype=int)
+    hist_neg_interval = np.zeros((grid_size, grid_size), dtype=int)
+    for x, y in zip(xs_pos, ys_pos):
+        hist_pos_interval[y, x] += 1
+    for x, y in zip(xs_neg, ys_neg):
+        hist_neg_interval[y, x] += 1
+
+    ax = axes[i]
+    _x, _y = np.meshgrid(np.arange(grid_size), np.arange(grid_size))
+    xpos = _x.ravel()
+    ypos = _y.ravel()
+    zpos = np.zeros_like(xpos)
+
+    dx_pos = hist_pos_interval.ravel()
+    mask_hist_pos = dx_pos > 0
+    ax.bar3d(zpos[mask_hist_pos], ypos[mask_hist_pos], xpos[mask_hist_pos], dx=dx_pos[mask_hist_pos], dy=0.8, dz=0.8, color='limegreen', alpha=0.7)
+
+    dx_neg = hist_neg_interval.ravel()
+    mask_hist_neg = dx_neg > 0
+    ax.bar3d(zpos[mask_hist_neg], ypos[mask_hist_neg], xpos[mask_hist_neg], dx=dx_neg[mask_hist_neg], dy=0.8, dz=0.8, color='r', alpha=0.7)
+
+    # Remove all axis text
+    ax.set_xlabel('')
+    ax.set_ylabel('')
+    ax.set_zlabel('')
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.set_zticklabels([])
+    ax.set_box_aspect((0.5, 1, 1))
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+
+plt.subplots_adjust(left=0.01, right=0.99, top=0.95, bottom=0.05, wspace=0.05)
+plt.show()
+
+""" # Example settings
 grid_size = 10
 hist_pos = np.zeros((grid_size, grid_size), dtype=int)
 hist_neg = np.zeros((grid_size, grid_size), dtype=int)
@@ -122,4 +179,4 @@ with open(csv_filename, mode='w', newline='') as file:
     writer = csv.writer(file)
     writer.writerows(table)
 
-print(f"CSV table '{csv_filename}' saved. Each cell shows (dx, dy) or is empty.")
+print(f"CSV table '{csv_filename}' saved. Each cell shows (dx, dy) or is empty.") """
