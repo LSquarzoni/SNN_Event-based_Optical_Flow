@@ -9,6 +9,7 @@ data:
 
 model:
     name: LIFFireNet # for other models available, see models/model.py
+    #name: LIFFireNet_short
     #name: SpikingRecEVFlowNet
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding

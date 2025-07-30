@@ -10,6 +10,7 @@ from dataloader.h5 import H5Loader
 from loss.flow import EventWarping
 from models.model import (
     FireNet,
+    FireNet_short,
     RNNFireNet,
     LeakyFireNet,
     FireFlowNet,
@@ -22,6 +23,7 @@ from models.model import (
 )
 from models.model import (
     LIFFireNet,
+    LIFFireNet_short,
     PLIFFireNet,
     ALIFFireNet,
     XLIFFireNet,

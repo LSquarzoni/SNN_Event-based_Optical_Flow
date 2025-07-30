@@ -284,6 +284,140 @@ class FireNet(BaseModel):
             activity = None
 
         return {"flow": [flow], "activity": activity}
+    
+    
+class FireNet_short(BaseModel):
+    """
+    Shortened FireNet architecture with R1b and R2b layers removed.
+    """
+
+    head_neuron = ConvLayer_
+    ff_neuron = ConvLayer_
+    rec_neuron = ConvGRU
+    residual = False
+    num_recurrent_units = 5  # Reduced from 7 to 5
+    kwargs = [{}] * num_recurrent_units
+    w_scale_pred = None
+
+    def __init__(self, unet_kwargs):
+        super().__init__()
+        self.num_bins = unet_kwargs["num_bins"]
+        base_num_channels = unet_kwargs["base_num_channels"]
+        kernel_size = unet_kwargs["kernel_size"]
+        self.encoding = unet_kwargs["encoding"]
+        self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
+        self.mask = unet_kwargs["mask_output"]
+        ff_act, rec_act = unet_kwargs["activations"]
+        if type(unet_kwargs["spiking_neuron"]) is dict:
+            for kwargs in self.kwargs:
+                kwargs.update(unet_kwargs["spiking_neuron"])
+
+        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0])
+
+        self.G1 = self.rec_neuron(
+            base_num_channels, base_num_channels, kernel_size, activation=rec_act, **self.kwargs[1]
+        )
+        self.R1a = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[2]
+        )
+        # R1b removed
+
+        self.G2 = self.rec_neuron(
+            base_num_channels, base_num_channels, kernel_size, activation=rec_act, **self.kwargs[3]
+        )
+        self.R2a = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[4]
+        )
+        # R2b removed
+
+        self.pred = ConvLayer(
+            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred
+        )
+
+        self.reset_states()
+
+    @property
+    def states(self):
+        return copy_states(self._states)
+
+    @states.setter
+    def states(self, states):
+        self._states = states
+
+    def detach_states(self):
+        detached_states = []
+        for state in self.states:
+            if type(state) is tuple:
+                tmp = []
+                for hidden in state:
+                    tmp.append(hidden.detach())
+                detached_states.append(tuple(tmp))
+            else:
+                detached_states.append(state.detach())
+        self.states = detached_states
+
+    def reset_states(self):
+        self._states = [None] * self.num_recurrent_units
+
+    def init_cropping(self, width, height):
+        pass
+
+    def forward(self, event_voxel, event_cnt, log=False):
+        """
+        :param event_voxel: N x num_bins x H x W
+        :param event_cnt: N x 4 x H x W per-polarity event cnt and average timestamp
+        :param log: log activity
+        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor.
+        """
+
+        # input encoding
+        if self.encoding == "voxel":
+            x = event_voxel
+        elif self.encoding == "cnt" and self.num_bins == 2:
+            x = event_cnt
+        else:
+            print("Model error: Incorrect input encoding.")
+            raise AttributeError
+
+        # normalize input
+        if self.norm_input:
+            mean, stddev = (
+                x[x != 0].mean(),
+                x[x != 0].std(),
+            )
+            x[x != 0] = (x[x != 0] - mean) / stddev
+
+        # forward pass (R1b and R2b removed)
+        x1, self._states[0] = self.head(x, self._states[0])
+
+        x2, self._states[1] = self.G1(x1, self._states[1])
+        x3, self._states[2] = self.R1a(x2, self._states[2])
+        # Skip R1b
+
+        x4, self._states[3] = self.G2(x3, self._states[3])  # G2 now takes x3 instead of x4
+        x5, self._states[4] = self.R2a(x4, self._states[4])
+        # Skip R2b
+
+        flow = self.pred(x5)  # pred now takes x5 instead of x7
+
+        # log activity
+        if log:
+            activity = {}
+            name = [
+                "0:input",
+                "1:head",
+                "2:G1",
+                "3:R1a",
+                "4:G2",
+                "5:R2a",
+                "6:pred",
+            ]
+            for n, l in zip(name, [x, x1, x2, x3, x4, x5, flow]):
+                activity[n] = l.detach().ne(0).float().mean().item()
+        else:
+            activity = None
+
+        return {"flow": [flow], "activity": activity}
 
 
 class EVFlowNet(BaseModel):
@@ -636,6 +770,17 @@ class LeakyFireNet(FireNet):
 class LIFFireNet(FireNet):
     """
     Spiking FireNet architecture of LIF neurons for dense optical flow estimation from events.
+    """
+
+    head_neuron = ConvLIF
+    ff_neuron = ConvLIF
+    rec_neuron = ConvLIFRecurrent
+    residual = False
+    w_scale_pred = 0.01
+    
+class LIFFireNet_short(FireNet_short):
+    """
+    Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
     """
 
     head_neuron = ConvLIF
