@@ -93,11 +93,12 @@ def test(args, config_parser):
 
     # model initialization and settings
     #model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # LIF FireNet          MODEL PATH FROM MY TRAINING ---------------------------
+    model_path_dir = "mlruns/0/models/LIFFireNet_ch16//data/model.pth"
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet/28/data/model.pth" # LIF EV-FlowNet
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
-    #model = load_model(args.runid, model, device, model_path_dir)                          MODEL PATH FROM MY TRAINING ---------------------------
+    #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+    model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
     model.eval()
 
     # validation metric

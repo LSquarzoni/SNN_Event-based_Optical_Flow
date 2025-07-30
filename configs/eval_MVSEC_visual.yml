@@ -9,7 +9,7 @@ model:
     mask_output: True
 
 metrics:
-    name: [AEE, NEE, AE]  # FWL, RSAT, AEE, NEE, AE
+    name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE
     flow_scaling: 128
 
 loader:

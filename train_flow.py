@@ -120,7 +120,7 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if avg_train_loss < best_loss - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_ch16/") # model: LIFFireNet     SAVING PATH ---------------------------------------------- 
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_ch16/") # model: LIFFireNet             SAVING PATH ---------------------------------------------- 
                         #model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
                         #model_save_path = get_next_model_folder("mlruns/0/models/test/")
                         mlflow.pytorch.save_model(model, model_save_path)
