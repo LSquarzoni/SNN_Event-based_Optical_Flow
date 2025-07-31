@@ -94,9 +94,10 @@ def test(args, config_parser):
         vis = Visualization(config, eval_id=eval_id, path_results=path_results, vis_type=vis_type)
 
     # model initialization and settings
-    #model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # LIF FireNet          MODEL PATH FROM MY TRAINING ---------------------------
-    model_path_dir = "mlruns/0/models/LIFFireNet_ch16/       /data/model.pth"
-    #model_path_dir = "mlruns/0/models/LIFEVFlowNet/28/data/model.pth" # LIF EV-FlowNet
+    model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # runid: fa926a65776541a987457014f5121f34          MODEL PATH FROM MY TRAINING ---------------------------
+    #model_path_dir = "mlruns/0/models/LIFFireNet_ch16/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
+    #model_path_dir = "mlruns/0/models/LIFFireNet_short//data/model.pth" # runid: 0067d60f138d4c9d9995779f1ace733b
+    #model_path_dir = "mlruns/0/models/LIFEVFlowNet/28/data/model.pth" # runid: b1f67d3c31814a508285ad4f9bd646af
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
@@ -226,8 +227,8 @@ def test(args, config_parser):
                 if config["vis"]["bars"]:
                     for bar in data.open_files_bar:
                         bar.next()
-                if config["vis"]["enabled"]: # flow_vis -> flow_vis_unmasked to show the unmasked flow
-                    vis.update(inputs, flow_vis, iwe, events_window_vis, masked_window_flow_vis, iwe_window_vis)
+                if config["vis"]["enabled"]: # flow_vis_unmasked -> show the unmasked flow, flow_vis -> show the masked flow
+                    vis.update(inputs, flow_vis_unmasked, iwe, events_window_vis, flow_vis, iwe_window_vis)
                 if config["vis"]["store"]:
                     sequence = data.files[data.batch_idx[0] % len(data.files)].split("/")[-1].split(".")[0]
                     vis.store(
