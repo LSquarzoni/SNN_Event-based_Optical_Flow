@@ -13,7 +13,7 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [160, 160] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center, std: [256, 256]
+    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center, std: [256, 256]
     augment: []
     gpu: 1
 
