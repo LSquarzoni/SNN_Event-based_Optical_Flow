@@ -16,6 +16,14 @@ from .spiking_submodules import (
     ConvXLIF,
     ConvXLIFRecurrent,
 )
+from .quantized_spiking_submodules import (
+    QuantizedConvLIF,
+    QuantizedConvLIFRecurrent,
+)
+from .quantized_submodules import (
+    QuantizedConvLayer_,
+    QuantizedConvGRU,
+)
 from .submodules import ConvGRU, ConvLayer, ConvLayer_, ConvLeaky, ConvLeakyRecurrent, ConvRecurrent
 from .unet import (
     UNetRecurrent,
@@ -24,6 +32,7 @@ from .unet import (
     SpikingMultiResUNetRecurrent,
     LeakyMultiResUNetRecurrent,
 )
+from .quantization_util import QuantizationConfig
 
 
 class E2VID(BaseModel):
@@ -162,15 +171,27 @@ class FireNet(BaseModel):
     def __init__(self, unet_kwargs):
         super().__init__()
         self.num_bins = unet_kwargs["num_bins"]
-        base_num_channels = unet_kwargs["base_num_channels"]
-        kernel_size = unet_kwargs["kernel_size"]
         self.encoding = unet_kwargs["encoding"]
         self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
         self.mask = unet_kwargs["mask_output"]
-        ff_act, rec_act = unet_kwargs["activations"]
+        
         if type(unet_kwargs["spiking_neuron"]) is dict:
             for kwargs in self.kwargs:
                 kwargs.update(unet_kwargs["spiking_neuron"])
+
+        # Create layers (can be overridden by subclasses)
+        if hasattr(self, '_create_layers'):
+            self._create_layers(unet_kwargs)
+        else:
+            self._create_default_layers(unet_kwargs)
+
+        self.reset_states()
+    
+    def _create_default_layers(self, unet_kwargs):
+        """Create default layers (original implementation)."""
+        base_num_channels = unet_kwargs["base_num_channels"]
+        kernel_size = unet_kwargs["kernel_size"]
+        ff_act, rec_act = unet_kwargs["activations"]
 
         self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0])
 
@@ -197,8 +218,6 @@ class FireNet(BaseModel):
         self.pred = ConvLayer(
             base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred
         )
-
-        self.reset_states()
 
     @property
     def states(self):
@@ -302,15 +321,27 @@ class FireNet_short(BaseModel):
     def __init__(self, unet_kwargs):
         super().__init__()
         self.num_bins = unet_kwargs["num_bins"]
-        base_num_channels = unet_kwargs["base_num_channels"]
-        kernel_size = unet_kwargs["kernel_size"]
         self.encoding = unet_kwargs["encoding"]
         self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
         self.mask = unet_kwargs["mask_output"]
-        ff_act, rec_act = unet_kwargs["activations"]
+        
         if type(unet_kwargs["spiking_neuron"]) is dict:
             for kwargs in self.kwargs:
                 kwargs.update(unet_kwargs["spiking_neuron"])
+
+        # Create layers (can be overridden by subclasses)
+        if hasattr(self, '_create_layers'):
+            self._create_layers(unet_kwargs)
+        else:
+            self._create_default_layers(unet_kwargs)
+
+        self.reset_states()
+    
+    def _create_default_layers(self, unet_kwargs):
+        """Create default layers (original implementation)."""
+        base_num_channels = unet_kwargs["base_num_channels"]
+        kernel_size = unet_kwargs["kernel_size"]
+        ff_act, rec_act = unet_kwargs["activations"]
 
         self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0])
 
@@ -333,8 +364,6 @@ class FireNet_short(BaseModel):
         self.pred = ConvLayer(
             base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred
         )
-
-        self.reset_states()
 
     @property
     def states(self):
@@ -778,6 +807,89 @@ class LIFFireNet(FireNet):
     residual = False
     w_scale_pred = 0.01
     
+    def __init__(self, unet_kwargs):
+        # Extract quantization config if present
+        self.quant_config = QuantizationConfig(
+            data_type=unet_kwargs.get("data_type", "fp32"),
+            activation_bits=unet_kwargs.get("activation_bits", 8),
+            weight_bits=unet_kwargs.get("weight_bits", 8),
+            state_bits=unet_kwargs.get("state_bits", 8)
+        )
+        
+        # Choose neuron types based on quantization config
+        if self.quant_config.use_quantization:
+            self.head_neuron = QuantizedConvLIF
+            self.ff_neuron = QuantizedConvLIF
+            self.rec_neuron = QuantizedConvLIFRecurrent
+        
+        super().__init__(unet_kwargs)
+    
+    def _create_layers(self, unet_kwargs):
+        """Create layers with quantization support."""
+        base_num_channels = unet_kwargs["base_num_channels"]
+        kernel_size = unet_kwargs["kernel_size"]
+        ff_act, rec_act = unet_kwargs["activations"]
+        
+        # Add quantization config to kwargs
+        layer_kwargs = self.kwargs.copy()
+        for kwargs in layer_kwargs:
+            kwargs["quant_config"] = self.quant_config
+
+        self.head = self.head_neuron(
+            self.num_bins, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[0]
+        )
+
+        self.G1 = self.rec_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=rec_act, **layer_kwargs[1]
+        )
+        self.R1a = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[2]
+        )
+        self.R1b = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[3]
+        )
+
+        self.G2 = self.rec_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=rec_act, **layer_kwargs[4]
+        )
+        self.R2a = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[5]
+        )
+        self.R2b = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[6]
+        )
+
+        self.pred = ConvLayer(
+            base_num_channels, out_channels=2, kernel_size=1, 
+            activation="tanh", w_scale=self.w_scale_pred
+        )
+    
+    def enable_quantization_calibration(self):
+        """Enable calibration mode for all quantized layers."""
+        if not self.quant_config.use_quantization:
+            return
+            
+        for module in self.modules():
+            if hasattr(module, 'enable_calibration'):
+                module.enable_calibration()
+    
+    def disable_quantization_calibration(self):
+        """Disable calibration mode for all quantized layers."""
+        if not self.quant_config.use_quantization:
+            return
+            
+        for module in self.modules():
+            if hasattr(module, 'disable_calibration'):
+                module.disable_calibration()
+
+
 class LIFFireNet_short(FireNet_short):
     """
     Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
@@ -788,62 +900,77 @@ class LIFFireNet_short(FireNet_short):
     rec_neuron = ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
+    
+    def __init__(self, unet_kwargs):
+        # Extract quantization config if present
+        self.quant_config = QuantizationConfig(
+            data_type=unet_kwargs.get("data_type", "fp32"),
+            activation_bits=unet_kwargs.get("activation_bits", 8),
+            weight_bits=unet_kwargs.get("weight_bits", 8),
+            state_bits=unet_kwargs.get("state_bits", 8)
+        )
+        
+        # Choose neuron types based on quantization config
+        if self.quant_config.use_quantization:
+            self.head_neuron = QuantizedConvLIF
+            self.ff_neuron = QuantizedConvLIF
+            self.rec_neuron = QuantizedConvLIFRecurrent
+        
+        super().__init__(unet_kwargs)
+    
+    def _create_layers(self, unet_kwargs):
+        """Create layers with quantization support."""
+        base_num_channels = unet_kwargs["base_num_channels"]
+        kernel_size = unet_kwargs["kernel_size"]
+        ff_act, rec_act = unet_kwargs["activations"]
+        
+        # Add quantization config to kwargs
+        layer_kwargs = self.kwargs.copy()
+        for kwargs in layer_kwargs:
+            kwargs["quant_config"] = self.quant_config
 
+        self.head = self.head_neuron(
+            self.num_bins, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[0]
+        )
 
-class PLIFFireNet(FireNet):
-    """
-    Spiking FireNet architecture of PLIF neurons for dense optical flow estimation from events.
-    """
+        self.G1 = self.rec_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=rec_act, **layer_kwargs[1]
+        )
+        self.R1a = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[2]
+        )
 
-    head_neuron = ConvPLIF
-    ff_neuron = ConvPLIF
-    rec_neuron = ConvPLIFRecurrent
-    residual = False
-    w_scale_pred = 0.01
+        self.G2 = self.rec_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=rec_act, **layer_kwargs[3]
+        )
+        self.R2a = self.ff_neuron(
+            base_num_channels, base_num_channels, kernel_size, 
+            activation=ff_act, **layer_kwargs[4]
+        )
 
-
-class ALIFFireNet(FireNet):
-    """
-    Spiking FireNet architecture of ALIF neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvALIF
-    ff_neuron = ConvALIF
-    rec_neuron = ConvALIFRecurrent
-    residual = False
-    w_scale_pred = 0.01
-
-
-class XLIFFireNet(FireNet):
-    """
-    Spiking FireNet architecture of XLIF neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvXLIF
-    ff_neuron = ConvXLIF
-    rec_neuron = ConvXLIFRecurrent
-    residual = False
-    w_scale_pred = 0.01
-
-
-class LIFFireFlowNet(FireNet):
-    """
-    Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
-    """
-
-    head_neuron = ConvLIF
-    ff_neuron = ConvLIF
-    rec_neuron = ConvLIF
-    residual = False
-    w_scale_pred = 0.01
-
-
-class LeakyFireFlowNet(FireNet):
-    """
-    FireFlowNet architecture with leaky internal state.
-    """
-
-    head_neuron = ConvLeaky
-    ff_neuron = ConvLeaky
-    rec_neuron = ConvLeaky
-    residual = False
+        self.pred = ConvLayer(
+            base_num_channels, out_channels=2, kernel_size=1, 
+            activation="tanh", w_scale=self.w_scale_pred
+        )
+    
+    def enable_quantization_calibration(self):
+        """Enable calibration mode for all quantized layers."""
+        if not self.quant_config.use_quantization:
+            return
+            
+        for module in self.modules():
+            if hasattr(module, 'enable_calibration'):
+                module.enable_calibration()
+    
+    def disable_quantization_calibration(self):
+        """Disable calibration mode for all quantized layers."""
+        if not self.quant_config.use_quantization:
+            return
+            
+        for module in self.modules():
+            if hasattr(module, 'disable_calibration'):
+                module.disable_calibration()

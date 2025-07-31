@@ -44,6 +44,31 @@ def get_next_model_folder(base_path="mlruns/0/models/"):
     return os.path.join(base_path, str(index))
 
 
+def calibrate_quantization(model, dataloader, config, device, num_samples=100):
+    """Calibrate quantization parameters by running inference on sample data."""
+    print(f"Starting quantization calibration with {num_samples} samples...")
+    
+    model.eval()
+    model.enable_quantization_calibration()
+    
+    sample_count = 0
+    with torch.no_grad():
+        for inputs in dataloader:
+            if sample_count >= num_samples:
+                break
+                
+            # Forward pass for calibration
+            _ = model(inputs["event_voxel"].to(device), inputs["event_cnt"].to(device))
+            sample_count += config["loader"]["batch_size"]
+            
+            if sample_count % 10 == 0:
+                print(f"Calibration progress: {sample_count}/{num_samples}")
+    
+    model.disable_quantization_calibration()
+    model.train()
+    print("Quantization calibration completed.")
+
+
 def train(args, config_parser):
     mlflow.set_tracking_uri(args.path_mlflow)
 
@@ -90,6 +115,25 @@ def train(args, config_parser):
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
     model = load_model(args.prev_runid, model, device)
+    
+    # Log quantization info
+    if hasattr(model, 'quant_config') and model.quant_config.use_quantization:
+        print(f"Using quantization: {model.quant_config.data_type}")
+        print(f"Activation bits: {model.quant_config.activation_bits}")
+        print(f"Weight bits: {model.quant_config.weight_bits}")
+        print(f"State bits: {model.quant_config.state_bits}")
+        
+        # Perform calibration if needed (only for inference, skip during training)
+        if args.calibrate_only:
+            calibrate_quantization(
+                model, dataloader, config, device, 
+                config.get("quantization", {}).get("calibration_samples", 100)
+            )
+            print("Calibration completed. Exiting.")
+            return
+    else:
+        print("Using FP32 precision")
+    
     model.train()
 
     # optimizers
@@ -230,6 +274,11 @@ if __name__ == "__main__":
         "--prev_runid",
         default="",
         help="pre-trained model to use as starting point",
+    )
+    parser.add_argument(
+        "--calibrate_only",
+        action="store_true",
+        help="only perform quantization calibration and exit",
     )
     args = parser.parse_args()
 
