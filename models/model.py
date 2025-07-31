@@ -974,3 +974,61 @@ class LIFFireNet_short(FireNet_short):
         for module in self.modules():
             if hasattr(module, 'disable_calibration'):
                 module.disable_calibration()
+                
+class PLIFFireNet(FireNet):
+    """
+    Spiking FireNet architecture of PLIF neurons for dense optical flow estimation from events.
+    """
+
+    head_neuron = ConvPLIF
+    ff_neuron = ConvPLIF
+    rec_neuron = ConvPLIFRecurrent
+    residual = False
+    w_scale_pred = 0.01
+
+
+class ALIFFireNet(FireNet):
+    """
+    Spiking FireNet architecture of ALIF neurons for dense optical flow estimation from events.
+    """
+
+    head_neuron = ConvALIF
+    ff_neuron = ConvALIF
+    rec_neuron = ConvALIFRecurrent
+    residual = False
+    w_scale_pred = 0.01
+
+
+class XLIFFireNet(FireNet):
+    """
+    Spiking FireNet architecture of XLIF neurons for dense optical flow estimation from events.
+    """
+
+    head_neuron = ConvXLIF
+    ff_neuron = ConvXLIF
+    rec_neuron = ConvXLIFRecurrent
+    residual = False
+    w_scale_pred = 0.01
+
+
+class LIFFireFlowNet(FireNet):
+    """
+    Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
+    """
+
+    head_neuron = ConvLIF
+    ff_neuron = ConvLIF
+    rec_neuron = ConvLIF
+    residual = False
+    w_scale_pred = 0.01
+
+
+class LeakyFireFlowNet(FireNet):
+    """
+    FireFlowNet architecture with leaky internal state.
+    """
+
+    head_neuron = ConvLeaky
+    ff_neuron = ConvLeaky
+    rec_neuron = ConvLeaky
+    residual = False
