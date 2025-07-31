@@ -35,7 +35,7 @@ class BaseDataLoader(torch.utils.data.Dataset):
         if self.config["hot_filter"]["enabled"]:
             self.hot_idx = [0 for i in range(self.config["loader"]["batch_size"])]
             self.hot_events = [
-                torch.zeros(self.config["loader"]["resolution"]) for i in range(self.config["loader"]["batch_size"])
+                torch.zeros(self.config["loader"]["std_resolution"]) for i in range(self.config["loader"]["batch_size"])
             ]
 
     @abstractmethod
@@ -55,7 +55,7 @@ class BaseDataLoader(torch.utils.data.Dataset):
         self.seq_num += 1
         if self.config["hot_filter"]["enabled"]:
             self.hot_idx[batch] = 0
-            self.hot_events[batch] = torch.zeros(self.config["loader"]["resolution"])
+            self.hot_events[batch] = torch.zeros(self.config["loader"]["std_resolution"])
 
         for i, mechanism in enumerate(self.config["loader"]["augment"]):
             if np.random.random() < self.config["loader"]["augment_prob"][i]:
@@ -101,11 +101,11 @@ class BaseDataLoader(torch.utils.data.Dataset):
 
             if mechanism == "Horizontal":
                 if self.batch_augmentation["Horizontal"][batch]:
-                    xs = self.config["loader"]["resolution"][1] - 1 - xs
+                    xs = self.config["loader"]["std_resolution"][1] - 1 - xs
 
             elif mechanism == "Vertical":
                 if self.batch_augmentation["Vertical"][batch]:
-                    ys = self.config["loader"]["resolution"][0] - 1 - ys
+                    ys = self.config["loader"]["std_resolution"][0] - 1 - ys
 
             elif mechanism == "Polarity":
                 if self.batch_augmentation["Polarity"][batch]:
@@ -154,7 +154,7 @@ class BaseDataLoader(torch.utils.data.Dataset):
         :return [2 x H x W] event representation
         """
 
-        return events_to_channels(xs, ys, ps, sensor_size=self.config["loader"]["resolution"])
+        return events_to_channels(xs, ys, ps, sensor_size=self.config["loader"]["std_resolution"])
 
     def create_mask_encoding(self, xs, ys, ps):
         """
@@ -166,7 +166,7 @@ class BaseDataLoader(torch.utils.data.Dataset):
         """
 
         event_mask = events_to_image(
-            xs, ys, ps.abs(), sensor_size=self.config["loader"]["resolution"], accumulate=False
+            xs, ys, ps.abs(), sensor_size=self.config["loader"]["std_resolution"], accumulate=False
         )
         return event_mask.view((1, event_mask.shape[0], event_mask.shape[1]))
 
@@ -190,7 +190,7 @@ class BaseDataLoader(torch.utils.data.Dataset):
             ts,
             ps,
             self.num_bins,
-            sensor_size=self.config["loader"]["resolution"],
+            sensor_size=self.config["loader"]["std_resolution"],
             round_ts=self.round_encoding,
         )
 

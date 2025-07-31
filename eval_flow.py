@@ -94,14 +94,14 @@ def test(args, config_parser):
         vis = Visualization(config, eval_id=eval_id, path_results=path_results, vis_type=vis_type)
 
     # model initialization and settings
-    model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # runid: fa926a65776541a987457014f5121f34          MODEL PATH FROM MY TRAINING ---------------------------
+    #model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # runid: fa926a65776541a987457014f5121f34          MODEL PATH FROM MY TRAINING ---------------------------
     #model_path_dir = "mlruns/0/models/LIFFireNet_ch16/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
     #model_path_dir = "mlruns/0/models/LIFFireNet_short//data/model.pth" # runid: 0067d60f138d4c9d9995779f1ace733b
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet/28/data/model.pth" # runid: b1f67d3c31814a508285ad4f9bd646af
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
-    model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
+    model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+    #model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
     model.eval()
 
     # validation metric
@@ -155,7 +155,7 @@ def test(args, config_parser):
                 iwe = compute_pol_iwe(
                     x["flow"][-1],
                     inputs["event_list"].to(device),
-                    config["loader"]["resolution"],
+                    config["loader"]["std_resolution"],
                     inputs["event_list_pol_mask"][:, :, 0:1].to(device),
                     inputs["event_list_pol_mask"][:, :, 1:2].to(device),
                     flow_scaling=config["metrics"]["flow_scaling"],

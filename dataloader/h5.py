@@ -5,6 +5,7 @@ import numpy as np
 
 import torch
 import torch.utils.data as data
+import torchvision.transforms as transforms
 
 from .base import BaseDataLoader
 from .utils import ProgressBar
@@ -179,52 +180,6 @@ class H5Loader(BaseDataLoader):
 
         return binary_search_array(file["events/ts"], timestamp)
 
-    def center_crop(self, image, target_height, target_width):
-        """
-        Center crop an image to the target resolution.
-        :param image: input image array
-        :param target_height: desired height
-        :param target_width: desired width
-        :return: center cropped image
-        """
-        h, w = image.shape[:2]
-        
-        # Calculate crop boundaries
-        start_h = (h - target_height) // 2
-        start_w = (w - target_width) // 2
-        end_h = start_h + target_height
-        end_w = start_w + target_width
-        
-        # Ensure we don't go out of bounds
-        start_h = max(0, start_h)
-        start_w = max(0, start_w)
-        end_h = min(h, end_h)
-        end_w = min(w, end_w)
-        
-        return image[start_h:end_h, start_w:end_w]
-
-    def crop_events_to_resolution(self, xs, ys, target_height, target_width, original_height, original_width):
-        """
-        Crop events to match center crop applied to frames.
-        :param xs, ys: event coordinates
-        :param target_height, target_width: target resolution
-        :param original_height, original_width: original resolution
-        :return: filtered event coordinates
-        """
-        # Calculate crop boundaries (same as center_crop)
-        start_h = (original_height - target_height) // 2
-        start_w = (original_width - target_width) // 2
-        
-        # Filter events within crop boundaries
-        valid_mask = (xs >= start_w) & (xs < start_w + target_width) & \
-                     (ys >= start_h) & (ys < start_h + target_height)
-        
-        # Adjust coordinates to new origin
-        xs_cropped = xs[valid_mask] - start_w
-        ys_cropped = ys[valid_mask] - start_h
-        
-        return xs_cropped, ys_cropped, valid_mask
-
     def __getitem__(self, index):
         while True:
             batch = index % self.config["loader"]["batch_size"]
@@ -324,7 +279,7 @@ class H5Loader(BaseDataLoader):
             # Get original resolution from first frame/flowmap to determine if cropping is needed
             original_height, original_width = None, None
             target_height, target_width = self.config["loader"]["resolution"]
-            
+
             if self.config["data"]["mode"] == "frames" and len(self.open_files_frames[batch].names) > 0:
                 sample_frame = self.open_files[batch]["images"][self.open_files_frames[batch].names[0]][:]
                 original_height, original_width = sample_frame.shape[:2]
@@ -334,22 +289,6 @@ class H5Loader(BaseDataLoader):
                 else:
                     sample_flow = self.open_files[batch]["flow_dt4"][self.open_files_flowmaps[batch].names[0]][:]
                 original_height, original_width = sample_flow.shape[:2]
-            else:
-                # For events mode, use the sensor resolution from file attributes or assume no cropping needed
-                original_height, original_width = target_height, target_width
-
-            # Apply center cropping to events if target resolution is smaller
-            if (original_height is not None and original_width is not None and 
-                (target_height < original_height or target_width < original_width)):
-                
-                xs_cropped, ys_cropped, valid_mask = self.crop_events_to_resolution(
-                    xs, ys, target_height, target_width, original_height, original_width
-                )
-                
-                # Apply the same mask to timestamps and polarities
-                xs, ys = xs_cropped, ys_cropped
-                ts = ts[valid_mask] if ts.shape[0] > 0 else ts
-                ps = ps[valid_mask] if ps.shape[0] > 0 else ps
 
             # data augmentation
             xs, ys, ps = self.augment_events(xs, ys, ps, batch)
@@ -375,14 +314,10 @@ class H5Loader(BaseDataLoader):
                 curr_idx = int(np.floor(self.batch_row[batch]))
                 next_idx = int(np.ceil(self.batch_row[batch] + self.config["data"]["window"]))
 
-                frames = np.zeros((2, target_height, target_width))
+                std_height, std_width = self.config["loader"]["std_resolution"]
+                frames = np.zeros((2, std_height, std_width))
                 img0 = self.open_files[batch]["images"][self.open_files_frames[batch].names[curr_idx]][:]
                 img1 = self.open_files[batch]["images"][self.open_files_frames[batch].names[next_idx]][:]
-                
-                # Apply center cropping if needed
-                if target_height < original_height or target_width < original_width:
-                    img0 = self.center_crop(img0, target_height, target_width)
-                    img1 = self.center_crop(img1, target_height, target_width)
                 
                 frames[0, :, :] = self.augment_frames(img0, batch)
                 frames[1, :, :] = self.augment_frames(img1, batch)
@@ -396,10 +331,6 @@ class H5Loader(BaseDataLoader):
                     flowmap = self.open_files[batch]["flow_dt1"][self.open_files_flowmaps[batch].names[idx]][:]
                 elif self.config["data"]["mode"] == "gtflow_dt4":
                     flowmap = self.open_files[batch]["flow_dt4"][self.open_files_flowmaps[batch].names[idx]][:]
-                
-                # Apply center cropping to flowmap if needed
-                if target_height < original_height or target_width < original_width:
-                    flowmap = self.center_crop(flowmap, target_height, target_width)
                 
                 flowmap = self.augment_flowmap(flowmap, batch)
                 flowmap = torch.from_numpy(flowmap.copy())
@@ -415,16 +346,59 @@ class H5Loader(BaseDataLoader):
 
         # prepare output
         output = {}
-        output["event_cnt"] = event_cnt
-        output["event_voxel"] = event_voxel
-        output["event_mask"] = event_mask
-        output["event_list"] = event_list
-        output["event_list_pol_mask"] = event_list_pol_mask
-        if self.config["data"]["mode"] == "frames":
-            output["frames"] = frames
-        if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-            output["gtflow"] = flowmap
-        output["dt_gt"] = torch.from_numpy(dt_gt)
-        output["dt_input"] = torch.from_numpy(dt_input)
+
+        # Check if cropping is needed (when target size is smaller than original size)
+        if original_height is not None and original_width is not None and [target_height, target_width] < [original_height, original_width]:
+            # Initialize center crop transform
+            center_crop = transforms.CenterCrop((target_height, target_width))
+            
+            # Apply center cropping to tensor-based encodings
+            output["event_cnt"] = center_crop(event_cnt)
+            output["event_voxel"] = center_crop(event_voxel)
+            output["event_mask"] = center_crop(event_mask)
+            
+            # Filter event_list based on crop boundaries
+            crop_y_start = (original_height - target_height) // 2
+            crop_y_end = crop_y_start + target_height
+            crop_x_start = (original_width - target_width) // 2
+            crop_x_end = crop_x_start + target_width
+            
+            # Create mask for events within crop region
+            # event_list shape: [batch_size x N x 4] where columns are [ts, y, x, p]
+            event_mask = ((event_list[..., 1] >= crop_y_start) & (event_list[..., 1] < crop_y_end) & 
+                          (event_list[..., 2] >= crop_x_start) & (event_list[..., 2] < crop_x_end))
+            
+            # Filter events and adjust coordinates
+            filtered_event_list = event_list[event_mask]
+            if filtered_event_list.shape[0] > 0:
+                filtered_event_list[..., 1] -= crop_y_start  # Adjust y coordinates
+                filtered_event_list[..., 2] -= crop_x_start  # Adjust x coordinates
+            
+            output["event_list"] = filtered_event_list
+            output["event_list_pol_mask"] = event_list_pol_mask[event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
+            
+            if self.config["data"]["mode"] == "frames":
+                output["frames"] = center_crop(frames)
+            if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
+                output["gtflow"] = center_crop(flowmap)
+            
+            output["dt_gt"] = torch.from_numpy(dt_gt)
+            output["dt_input"] = torch.from_numpy(dt_input)
+             
+        else:
+            # Output unaltered tensors when no cropping is needed
+            output["event_cnt"] = event_cnt
+            output["event_voxel"] = event_voxel
+            output["event_mask"] = event_mask
+            output["event_list"] = event_list
+            output["event_list_pol_mask"] = event_list_pol_mask
+            
+            if self.config["data"]["mode"] == "frames":
+                output["frames"] = frames
+            if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
+                output["gtflow"] = flowmap
+            
+            output["dt_gt"] = torch.from_numpy(dt_gt)
+            output["dt_input"] = torch.from_numpy(dt_input)
 
         return output

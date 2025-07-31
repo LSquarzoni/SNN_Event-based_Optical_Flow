@@ -1,5 +1,4 @@
 data:
-    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
     path: datasets/MVSEC/h5/
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
@@ -14,7 +13,8 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [256, 256] # H x W
+    resolution: [160, 160] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    std_resolution: [256, 256]
     augment: []
     gpu: 1
 

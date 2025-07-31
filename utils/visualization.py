@@ -39,8 +39,19 @@ class Visualization:
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
         frames = inputs["frames"] if "frames" in inputs.keys() else None
         gtflow = inputs["gtflow"] if "gtflow" in inputs.keys() else None
-        height = events.shape[2]
-        width = events.shape[3]
+        
+        # Get dimensions from events if available, otherwise from flow or gtflow
+        if events is not None:
+            height = events.shape[2]
+            width = events.shape[3]
+        elif flow is not None:
+            height = flow.shape[2]
+            width = flow.shape[3]
+        elif gtflow is not None:
+            height = gtflow.shape[2]
+            width = gtflow.shape[3]
+        else:
+            height, width = 256, 256  # fallback
 
         # input events
         events = events.detach()
@@ -71,7 +82,8 @@ class Visualization:
         # optical flow
         if flow is not None:
             flow = flow.detach()
-            flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            flow_h, flow_w = flow.shape[2], flow.shape[3]
+            flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
             if self.vis_type == "vectors":
                 flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse")
             else:
@@ -84,7 +96,8 @@ class Visualization:
         # optical flow (masked)
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
-            masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
+            masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
             if self.vis_type == "vectors":
                 masked_window_flow_npy = self.flow_to_vector(
                     masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
@@ -101,7 +114,8 @@ class Visualization:
         # ground-truth optical flow
         if gtflow is not None:
             gtflow = gtflow.detach()
-            gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
+            gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_h, gtflow_w, 2))
             if self.vis_type == "vectors":
                 gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
             else:
@@ -114,7 +128,8 @@ class Visualization:
         # image of warped events
         if iwe is not None:
             iwe = iwe.detach()
-            iwe_npy = iwe.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            iwe_h, iwe_w = iwe.shape[2], iwe.shape[3]
+            iwe_npy = iwe.cpu().numpy().transpose(0, 2, 3, 1).reshape((iwe_h, iwe_w, 2))
             iwe_npy = self.events_to_image(iwe_npy)
             cv2.namedWindow("Image of Warped Events", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Image of Warped Events", int(self.px), int(self.px))
@@ -123,7 +138,8 @@ class Visualization:
         # image of warped events - evaluation window
         if iwe_window is not None:
             iwe_window = iwe_window.detach()
-            iwe_window_npy = iwe_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            iwe_window_h, iwe_window_w = iwe_window.shape[2], iwe_window.shape[3]
+            iwe_window_npy = iwe_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((iwe_window_h, iwe_window_w, 2))
             iwe_window_npy = self.events_to_image(iwe_window_npy)
             cv2.namedWindow("Image of Warped Events - Eval window", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Image of Warped Events - Eval window", int(self.px), int(self.px))
@@ -144,8 +160,19 @@ class Visualization:
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
         frames = inputs["frames"] if "frames" in inputs.keys() else None
         gtflow = inputs["gtflow"] if "gtflow" in inputs.keys() else None
-        height = events.shape[2]
-        width = events.shape[3]
+        
+        # Get dimensions from events if available, otherwise from flow or gtflow
+        if events is not None:
+            height = events.shape[2]
+            width = events.shape[3]
+        elif flow is not None:
+            height = flow.shape[2]
+            width = flow.shape[3]
+        elif gtflow is not None:
+            height = gtflow.shape[2]
+            width = gtflow.shape[3]
+        else:
+            height, width = 256, 256  # fallback
         
         # Skip saving if not enough time has passed
         if ts is not None:
@@ -196,7 +223,8 @@ class Visualization:
         # optical flow
         if flow is not None:
             flow = flow.detach()
-            flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            flow_h, flow_w = flow.shape[2], flow.shape[3]
+            flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
             if self.vis_type == "vectors":
                 flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse")
             else:
@@ -208,7 +236,8 @@ class Visualization:
         # optical flow (masked)
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
-            masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
+            masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
             if self.vis_type == "vectors":
                 masked_window_flow_npy = self.flow_to_vector(
                     masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
@@ -224,7 +253,8 @@ class Visualization:
         # ground-truth optical flow
         if gtflow is not None:
             gtflow = gtflow.detach()
-            gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
+            gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_h, gtflow_w, 2))
             if self.vis_type == "vectors":
                 gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
             else:
@@ -236,7 +266,8 @@ class Visualization:
         # image of warped events
         if iwe is not None:
             iwe = iwe.detach()
-            iwe_npy = iwe.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            iwe_h, iwe_w = iwe.shape[2], iwe.shape[3]
+            iwe_npy = iwe.cpu().numpy().transpose(0, 2, 3, 1).reshape((iwe_h, iwe_w, 2))
             iwe_npy = self.events_to_image(iwe_npy)
             filename = path_to + "iwe/%09d.png" % self.img_idx
             cv2.imwrite(filename, iwe_npy * 255)
@@ -244,7 +275,8 @@ class Visualization:
         # image of warped events - evaluation window
         if iwe_window is not None:
             iwe_window = iwe_window.detach()
-            iwe_window_npy = iwe_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            iwe_window_h, iwe_window_w = iwe_window.shape[2], iwe_window.shape[3]
+            iwe_window_npy = iwe_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((iwe_window_h, iwe_window_w, 2))
             iwe_window_npy = self.events_to_image(iwe_window_npy)
             filename = path_to + "iwe_window/%09d.png" % self.img_idx
             cv2.imwrite(filename, iwe_window_npy * 255)

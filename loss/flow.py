@@ -36,8 +36,8 @@ class EventWarping(torch.nn.Module):
     def __init__(self, config, device, flow_scaling=None, loss_scaling=True):
         super(EventWarping, self).__init__()
         self.loss_scaling = loss_scaling
-        self.res = config["loader"]["resolution"]
-        self.flow_scaling = flow_scaling if flow_scaling is not None else max(config["loader"]["resolution"])
+        self.res = config["loader"]["std_resolution"]
+        self.flow_scaling = flow_scaling if flow_scaling is not None else max(config["loader"]["std_resolution"])
         self.weight = config["loss"]["flow_regul_weight"]
         self.smoothing_mask = False if "mask_output" not in config["model"].keys() else config["model"]["mask_output"]
         self.overwrite_intermediate = (
@@ -308,7 +308,7 @@ class BaseValidationLoss(torch.nn.Module):
 
     def __init__(self, config, device, flow_scaling=128):
         super(BaseValidationLoss, self).__init__()
-        self.res = config["loader"]["resolution"]
+        self.res = config["loader"]["std_resolution"]
         self.flow_scaling = flow_scaling  # should be specified by the user
         self.overwrite_intermediate = (
             False if "overwrite_intermediate" not in config["loss"].keys() else config["loss"]["overwrite_intermediate"]
@@ -321,37 +321,6 @@ class BaseValidationLoss(torch.nn.Module):
         self._flow_map = None
         self._pol_mask_list = None
         self._event_mask = None
-
-    def center_crop_tensor(self, tensor, target_height, target_width):
-        """
-        Center crop a tensor to the target resolution.
-        :param tensor: input tensor of shape [B, C, H, W]
-        :param target_height: desired height
-        :param target_width: desired width
-        :return: center cropped tensor
-        """
-        if tensor is None:
-            return None
-            
-        B, C, H, W = tensor.shape
-        
-        # If already at target size, return as is
-        if H == target_height and W == target_width:
-            return tensor
-            
-        # Calculate crop boundaries
-        start_h = (H - target_height) // 2
-        start_w = (W - target_width) // 2
-        end_h = start_h + target_height
-        end_w = start_w + target_width
-        
-        # Ensure we don't go out of bounds
-        start_h = max(0, start_h)
-        start_w = max(0, start_w)
-        end_h = min(H, end_h)
-        end_w = min(W, end_w)
-        
-        return tensor[:, :, start_h:end_h, start_w:end_w]
 
     @property
     def num_events(self):
@@ -374,7 +343,7 @@ class BaseValidationLoss(torch.nn.Module):
         
         # Apply center cropping to ground truth flow if needed
         if gtflow is not None:
-            gtflow = self.center_crop_tensor(gtflow, self.res[0], self.res[1])
+            gtflow = gtflow
 
         # flow vector per input event
         flow_idx = event_list[:, :, 1:3].clone()
@@ -383,6 +352,7 @@ class BaseValidationLoss(torch.nn.Module):
 
         # get flow for every event in the list
         flow = flow_list[-1]  # only highest resolution flow
+        
         flow = flow.view(flow.shape[0], 2, -1)
         event_flowy = torch.gather(flow[:, 1, :], 1, flow_idx.long())  # vertical component
         event_flowx = torch.gather(flow[:, 0, :], 1, flow_idx.long())  # horizontal component
@@ -442,6 +412,7 @@ class BaseValidationLoss(torch.nn.Module):
 
         # get flow for every event in the list
         flow = flow_list[-1]  # only highest resolution flow
+        
         flow = flow.view(flow.shape[0], 2, -1)
         event_flowy = torch.gather(flow[:, 1, :], 1, flow_idx.long())  # vertical component
         event_flowx = torch.gather(flow[:, 0, :], 1, flow_idx.long())  # horizontal component
@@ -632,9 +603,7 @@ class AEE(BaseValidationLoss):
         flow = self._flow_map[-1] * self.flow_scaling
         flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
         flow_mag = flow.pow(2).sum(1).sqrt()
-
-        # Ensure ground truth flow matches the expected resolution
-        gtflow = self.center_crop_tensor(self._gtflow, self.res[0], self.res[1])
+        gtflow = self._gtflow
 
         # compute AEE
         error = (flow - gtflow).pow(2).sum(1).sqrt()
@@ -684,9 +653,7 @@ class NEE(BaseValidationLoss):
         flow = self._flow_map[-1] * self.flow_scaling
         flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
         flow_mag = flow.pow(2).sum(1).sqrt()
-
-        # Ensure ground truth flow matches the expected resolution
-        gtflow = self.center_crop_tensor(self._gtflow, self.res[0], self.res[1])
+        gtflow = self._gtflow
 
         # compute NEE
         flow_norm = torch.norm(flow, dim=1, keepdim=True)
@@ -738,16 +705,13 @@ class AE(BaseValidationLoss):
         flow = self._flow_map[-1] * self.flow_scaling
         flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
         flow_norm = torch.norm(flow, dim=1, keepdim=True)
-        
-        # Ensure ground truth flow matches the expected resolution
-        gtflow = self.center_crop_tensor(self._gtflow, self.res[0], self.res[1])
-        gtflow_norm = torch.norm(gtflow, dim=1, keepdim=True)
+        gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
         
         # Dot product
-        dot = torch.sum(flow * gtflow, dim=1)
+        dot = torch.sum(flow * self._gtflow, dim=1)
         
         # compute AE
-        cos_angle = dot / (flow_norm.squeeze() * gtflow_norm.squeeze() + 1e-8)
+        cos_angle = (flow_norm * gtflow_norm) / (dot + 0.01)
         cos_angle = torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5)
         error = torch.acos(cos_angle) # result in radiants
         
@@ -755,8 +719,8 @@ class AE(BaseValidationLoss):
         event_mask = self._event_mask[:, -1, :, :].bool()
 
         # AE not computed in pixels without valid ground truth
-        gtflow_mask_x = gtflow[:, 0, :, :] == 0.0
-        gtflow_mask_y = gtflow[:, 1, :, :] == 0.0
+        gtflow_mask_x = self._gtflow[:, 0, :, :] == 0.0
+        gtflow_mask_y = self._gtflow[:, 1, :, :] == 0.0
         gtflow_mask = ~(gtflow_mask_x & gtflow_mask_y)
 
         # Apply masks
