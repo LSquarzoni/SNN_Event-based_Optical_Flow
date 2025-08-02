@@ -7,10 +7,10 @@ data:
 model:
     mask_output: True
 
-    data_type: fp32  # or fp32 - should match training config
-    activation_bits: 32
-    weight_bits: 32
-    state_bits: 32
+    data_type: int8  # or fp32 - should match training config
+    activation_bits: 8
+    weight_bits: 8
+    state_bits: 8
 
 quantization:
     calibration_samples: 50  # samples for calibration during eval

@@ -51,6 +51,7 @@ class ConvLIF(nn.Module):
         hard_reset=True,
         detach=True,
         norm=None,
+        quant_config=None,
     ):
         super().__init__()
 
@@ -463,6 +464,7 @@ class ConvLIFRecurrent(nn.Module):
         hard_reset=True,
         detach=True,
         norm=None,
+        quant_config=None,
     ):
         super().__init__()
 

@@ -8,23 +8,23 @@ data:
     window_loss: 10000 # events
 
 model:
-    name: LIFFireNet # for other models available, see models/model.py
-    #name: LIFFireNet_short # shorter model with 6 layers instead of 8
+    #name: LIFFireNet # for other models available, see models/model.py
+    name: LIFFireNet_short # shorter model with 6 layers instead of 8
     #name: SpikingRecEVFlowNet
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
     num_bins: 2
-    base_num_channels: 32
+    base_num_channels: 16
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
 
     # Quantization configuration
-    data_type: int8 # fp32 or int8
-    activation_bits: 8 # 32 or 8
-    weight_bits: 8
-    state_bits: 8
+    data_type: fp32 # fp32 or int8
+    activation_bits: 32 # 32 or 8
+    weight_bits: 32
+    state_bits: 32
 
 spiking_neuron:
     leak: [-4.0, 0.1]
@@ -34,7 +34,7 @@ spiking_neuron:
     hard_reset: True
 
 quantization:
-    enabled: True # can be used to override data_type setting
+    enabled: False # can be used to override data_type setting
     calibration_samples: 100 # number of samples for calibration
     symmetric: True # use symmetric quantization
     
@@ -54,7 +54,7 @@ loader:
     std_resolution: [128, 128]
     augment: ["Horizontal", "Vertical", "Polarity"]
     augment_prob: [0.5, 0.5, 0.5]
-    gpu: 2
+    gpu: 3
 
 vis:
     verbose: True
