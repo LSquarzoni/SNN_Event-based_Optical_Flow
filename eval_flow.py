@@ -98,12 +98,12 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_ch16/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
     #model_path_dir = "mlruns/0/models/LIFFireNet_short/29/data/model.pth" # runid: 0067d60f138d4c9d9995779f1ace733b
     #model_path_dir = "mlruns/0/models/LIFFireNet_int8/3/data/model.pth" # runid: 380a8245b2644c91994b074a938590fc
-    model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
+    #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet/28/data/model.pth" # runid: b1f67d3c31814a508285ad4f9bd646af
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
-    model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
+    model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+    #model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
     model.eval()
 
     # validation metric
@@ -157,7 +157,7 @@ def test(args, config_parser):
                 iwe = compute_pol_iwe(
                     x["flow"][-1],
                     inputs["event_list"].to(device),
-                    config["loader"]["std_resolution"],
+                    config["loader"]["resolution"],
                     inputs["event_list_pol_mask"][:, :, 0:1].to(device),
                     inputs["event_list_pol_mask"][:, :, 1:2].to(device),
                     flow_scaling=config["metrics"]["flow_scaling"],

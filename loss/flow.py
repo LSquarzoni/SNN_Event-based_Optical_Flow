@@ -36,8 +36,8 @@ class EventWarping(torch.nn.Module):
     def __init__(self, config, device, flow_scaling=None, loss_scaling=True):
         super(EventWarping, self).__init__()
         self.loss_scaling = loss_scaling
-        self.res = config["loader"]["std_resolution"]
-        self.flow_scaling = flow_scaling if flow_scaling is not None else max(config["loader"]["std_resolution"])
+        self.res = config["loader"]["resolution"]
+        self.flow_scaling = flow_scaling if flow_scaling is not None else max(config["loader"]["resolution"])
         self.weight = config["loss"]["flow_regul_weight"]
         self.smoothing_mask = False if "mask_output" not in config["model"].keys() else config["model"]["mask_output"]
         self.overwrite_intermediate = (
@@ -308,7 +308,7 @@ class BaseValidationLoss(torch.nn.Module):
 
     def __init__(self, config, device, flow_scaling=128):
         super(BaseValidationLoss, self).__init__()
-        self.res = config["loader"]["std_resolution"]
+        self.res = config["loader"]["resolution"]
         self.flow_scaling = flow_scaling  # should be specified by the user
         self.overwrite_intermediate = (
             False if "overwrite_intermediate" not in config["loss"].keys() else config["loss"]["overwrite_intermediate"]

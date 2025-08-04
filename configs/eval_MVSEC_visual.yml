@@ -27,11 +27,11 @@ loader:
     gpu: 1
 
 vis:
-    enabled: True
+    enabled: False
     px: 400
     bars: True
     activity: False
-    store: False
+    store: True
     store_interval: 5.0  # store every x seconds
     type: gradients # gradients or vectors
 

@@ -289,6 +289,9 @@ class H5Loader(BaseDataLoader):
                 else:
                     sample_flow = self.open_files[batch]["flow_dt4"][self.open_files_flowmaps[batch].names[0]][:]
                 original_height, original_width = sample_flow.shape[:2]
+            else:
+                # For events mode, use std_resolution as the original size
+                original_height, original_width = self.config["loader"]["std_resolution"]
 
             # data augmentation
             xs, ys, ps = self.augment_events(xs, ys, ps, batch)
@@ -314,8 +317,8 @@ class H5Loader(BaseDataLoader):
                 curr_idx = int(np.floor(self.batch_row[batch]))
                 next_idx = int(np.ceil(self.batch_row[batch] + self.config["data"]["window"]))
 
-                std_height, std_width = self.config["loader"]["std_resolution"]
-                frames = np.zeros((2, std_height, std_width))
+                original_height, original_width = self.config["loader"]["std_resolution"]
+                frames = np.zeros((2, original_height, original_width))
                 img0 = self.open_files[batch]["images"][self.open_files_frames[batch].names[curr_idx]][:]
                 img1 = self.open_files[batch]["images"][self.open_files_frames[batch].names[next_idx]][:]
                 
@@ -348,7 +351,8 @@ class H5Loader(BaseDataLoader):
         output = {}
 
         # Check if cropping is needed (when target size is smaller than original size)
-        if original_height is not None and original_width is not None and [target_height, target_width] < [original_height, original_width]:
+        if (original_height is not None and original_width is not None and 
+            (target_height < original_height or target_width < original_width)):
             # Initialize center crop transform
             center_crop = transforms.CenterCrop((target_height, target_width))
             
@@ -364,18 +368,22 @@ class H5Loader(BaseDataLoader):
             crop_x_end = crop_x_start + target_width
             
             # Create mask for events within crop region
-            # event_list shape: [batch_size x N x 4] where columns are [ts, y, x, p]
-            event_mask = ((event_list[..., 1] >= crop_y_start) & (event_list[..., 1] < crop_y_end) & 
-                          (event_list[..., 2] >= crop_x_start) & (event_list[..., 2] < crop_x_end))
-            
-            # Filter events and adjust coordinates
-            filtered_event_list = event_list[event_mask]
-            if filtered_event_list.shape[0] > 0:
-                filtered_event_list[..., 1] -= crop_y_start  # Adjust y coordinates
-                filtered_event_list[..., 2] -= crop_x_start  # Adjust x coordinates
-            
-            output["event_list"] = filtered_event_list
-            output["event_list_pol_mask"] = event_list_pol_mask[event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
+            # event_list shape: [4, N] where columns are [ts, y, x, p]
+            if event_list.numel() > 0:
+                event_mask = ((event_list[1, :] >= crop_y_start) & (event_list[1, :] < crop_y_end) & 
+                              (event_list[2, :] >= crop_x_start) & (event_list[2, :] < crop_x_end))
+                
+                # Filter events and adjust coordinates
+                filtered_event_list = event_list[:, event_mask]
+                if filtered_event_list.shape[1] > 0:
+                    filtered_event_list[1, :] -= crop_y_start  # Adjust y coordinates
+                    filtered_event_list[2, :] -= crop_x_start  # Adjust x coordinates
+                
+                output["event_list"] = filtered_event_list
+                output["event_list_pol_mask"] = event_list_pol_mask[:, event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
+            else:
+                output["event_list"] = event_list
+                output["event_list_pol_mask"] = event_list_pol_mask
             
             if self.config["data"]["mode"] == "frames":
                 output["frames"] = center_crop(frames)
