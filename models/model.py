@@ -21,8 +21,7 @@ from .quantized_spiking_submodules import (
     QuantizedConvLIFRecurrent,
 )
 from .quantized_submodules import (
-    QuantizedConvLayer_,
-    QuantizedConvGRU,
+    QuantizedConvLayer,
 )
 from .submodules import ConvGRU, ConvLayer, ConvLayer_, ConvLeaky, ConvLeakyRecurrent, ConvRecurrent
 from .unet import (
@@ -804,6 +803,7 @@ class LIFFireNet(FireNet):
     head_neuron = ConvLIF
     ff_neuron = ConvLIF
     rec_neuron = ConvLIFRecurrent
+    pred_layer = ConvLayer
     residual = False
     w_scale_pred = 0.01
     
@@ -821,6 +821,7 @@ class LIFFireNet(FireNet):
             self.head_neuron = QuantizedConvLIF
             self.ff_neuron = QuantizedConvLIF
             self.rec_neuron = QuantizedConvLIFRecurrent
+            self.pred_layer = QuantizedConvLayer
         
         super().__init__(unet_kwargs)
     
@@ -866,7 +867,7 @@ class LIFFireNet(FireNet):
             activation=ff_act, **layer_kwargs[6]
         )
 
-        self.pred = ConvLayer(
+        self.pred = self.pred_layer(
             base_num_channels, out_channels=2, kernel_size=1, 
             activation="tanh", w_scale=self.w_scale_pred
         )
@@ -898,6 +899,7 @@ class LIFFireNet_short(FireNet_short):
     head_neuron = ConvLIF
     ff_neuron = ConvLIF
     rec_neuron = ConvLIFRecurrent
+    pred_layer = ConvLayer
     residual = False
     w_scale_pred = 0.01
     
@@ -915,6 +917,7 @@ class LIFFireNet_short(FireNet_short):
             self.head_neuron = QuantizedConvLIF
             self.ff_neuron = QuantizedConvLIF
             self.rec_neuron = QuantizedConvLIFRecurrent
+            self.pred_layer = QuantizedConvLayer
         
         super().__init__(unet_kwargs)
     
@@ -952,7 +955,7 @@ class LIFFireNet_short(FireNet_short):
             activation=ff_act, **layer_kwargs[4]
         )
 
-        self.pred = ConvLayer(
+        self.pred = self.pred_layer(
             base_num_channels, out_channels=2, kernel_size=1, 
             activation="tanh", w_scale=self.w_scale_pred
         )
