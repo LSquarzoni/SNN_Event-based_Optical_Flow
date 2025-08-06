@@ -183,6 +183,7 @@ class FireNet(BaseModel):
         base_num_channels = unet_kwargs["base_num_channels"]
         kernel_size = unet_kwargs["kernel_size"]
         ff_act, rec_act = unet_kwargs["activations"]
+        quantization_config = unet_kwargs.get("quantization", {})
 
         self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0])
 
@@ -207,7 +208,7 @@ class FireNet(BaseModel):
         )
 
         self.pred = ConvLayer(
-            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred
+            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property
@@ -333,6 +334,7 @@ class FireNet_short(BaseModel):
         base_num_channels = unet_kwargs["base_num_channels"]
         kernel_size = unet_kwargs["kernel_size"]
         ff_act, rec_act = unet_kwargs["activations"]
+        quantization_config = unet_kwargs.get("quantization", {})
 
         self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0])
 
@@ -353,7 +355,7 @@ class FireNet_short(BaseModel):
         # R2b removed
 
         self.pred = ConvLayer(
-            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred
+            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property
@@ -795,7 +797,6 @@ class LIFFireNet(FireNet):
     head_neuron = ConvLIF
     ff_neuron = ConvLIF
     rec_neuron = ConvLIFRecurrent
-    pred_layer = ConvLayer
     residual = False
     w_scale_pred = 0.01
 
@@ -808,7 +809,6 @@ class LIFFireNet_short(FireNet_short):
     head_neuron = ConvLIF
     ff_neuron = ConvLIF
     rec_neuron = ConvLIFRecurrent
-    pred_layer = ConvLayer
     residual = False
     w_scale_pred = 0.01
 

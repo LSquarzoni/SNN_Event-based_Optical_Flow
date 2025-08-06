@@ -6,6 +6,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as f
 
+import snntorch
+import brevitas
+from brevitas.nn import QuantConv2D
+from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
+
 import models.spiking_util as spiking
 
 
@@ -25,12 +30,31 @@ class ConvLayer(nn.Module):
         norm=None,
         BN_momentum=0.1,
         w_scale=None,
+        quantization_config=None,
     ):
         super(ConvLayer, self).__init__()
 
         bias = False if norm == "BN" else True
         padding = kernel_size // 2
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+        
+        # Quantization checking
+        if quantization_config is not None and quantization_config["enabled"]:
+            self.conv2d = QuantConv2D(
+                in_channels,
+                out_channels,
+                kernel_size,
+                stride=stride,
+                padding=padding,
+                bias=bias,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=None, # Int8ActPerTensorFloat
+                output_quant=None, # Int8ActPerTensorFloat
+                bias_quant=None if not bias else Int8WeightPerTensorFloat, 
+                return_quant_tensor=True 
+            )
+        else:
+            self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
+            
         if w_scale is not None:
             nn.init.uniform_(self.conv2d.weight, -w_scale, w_scale)
             nn.init.zeros_(self.conv2d.bias)

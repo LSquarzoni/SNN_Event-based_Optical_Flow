@@ -7,13 +7,17 @@ data:
 model:
     mask_output: True
 
+quantization:
+    enabled: False
+    type: int8 # int8 or int16
+
 metrics:
     name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE
     flow_scaling: 128
 
 loader:
     batch_size: 1
-    resolution: [160, 160] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
     gpu: 1
