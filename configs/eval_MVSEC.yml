@@ -6,10 +6,9 @@ data:
 
 model:
     mask_output: True
-
-quantization:
-    enabled: False
-    type: int8 # int8 or int16
+    quantization:
+        enabled: True
+        type: int8 # int8 or int16
 
 metrics:
     name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE

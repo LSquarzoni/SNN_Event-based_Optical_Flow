@@ -19,10 +19,9 @@ model:
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
-
-quantization:
-    enabled: True
-    type: int8 # int8 or int16
+    quantization:
+        enabled: True
+        type: int8 # int8 or int16
 
 spiking_neuron:
     leak: [-4.0, 0.1]

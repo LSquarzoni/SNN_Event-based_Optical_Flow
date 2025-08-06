@@ -4,6 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import snntorch
+import brevitas
+from brevitas.nn import QuantConv2d
+from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
+
 import models.spiking_util as spiking
 
 
@@ -51,6 +56,7 @@ class ConvLIF(nn.Module):
         hard_reset=True,
         detach=True,
         norm=None,
+        quantization_config=None,
     ):
         super().__init__()
 
@@ -59,8 +65,24 @@ class ConvLIF(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
 
+        # Quantization checking
+        if quantization_config is not None and quantization_config["enabled"]:
+            self.ff = QuantConv2d(
+                input_size,
+                hidden_size,
+                kernel_size,
+                stride=stride,
+                padding=padding,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=None, # Int8ActPerTensorFloat
+                output_quant=None, # Int8ActPerTensorFloat
+                return_quant_tensor=False,
+            )
+        else:
+            self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
+            
         # parameters
-        self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
         if learn_leak:
             self.leak = nn.Parameter(torch.randn(hidden_size, 1, 1) * leak[1] + leak[0])
         else:
@@ -463,6 +485,7 @@ class ConvLIFRecurrent(nn.Module):
         hard_reset=True,
         detach=True,
         norm=None,
+        quantization_config=None,
     ):
         super().__init__()
 
@@ -470,10 +493,36 @@ class ConvLIFRecurrent(nn.Module):
         padding = kernel_size // 2
         self.input_size = input_size
         self.hidden_size = hidden_size
+        
+        # Quantization checking
+        if quantization_config is not None and quantization_config["enabled"]:
+            self.ff = QuantConv2d(
+                input_size,
+                hidden_size,
+                kernel_size,
+                padding=padding,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=None, # Int8ActPerTensorFloat
+                output_quant=None, # Int8ActPerTensorFloat
+                return_quant_tensor=False,
+            )
+            self.rec = QuantConv2d(
+                hidden_size,
+                hidden_size,
+                kernel_size,
+                padding=padding,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=None, # Int8ActPerTensorFloat
+                output_quant=None, # Int8ActPerTensorFloat
+                return_quant_tensor=False,
+            )
+        else:
+            self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
+            self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
 
         # parameters
-        self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
-        self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
         if learn_leak:
             self.leak = nn.Parameter(torch.randn(hidden_size, 1, 1) * leak[1] + leak[0])
         else:
