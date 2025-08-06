@@ -20,23 +20,12 @@ model:
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
 
-    # Quantization configuration
-    data_type: fp32 # fp32 or int8
-    activation_bits: 32 # 32 or 8
-    weight_bits: 32
-    state_bits: 32
-
 spiking_neuron:
     leak: [-4.0, 0.1]
     thresh: [0.8, 0.1]
     learn_leak: True
     learn_thresh: True
     hard_reset: True
-
-quantization:
-    enabled: False # can be used to override data_type setting
-    calibration_samples: 100 # number of samples for calibration
-    symmetric: True # use symmetric quantization
     
 loss:
     flow_regul_weight: 0.001

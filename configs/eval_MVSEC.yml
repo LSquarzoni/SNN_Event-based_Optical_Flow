@@ -7,14 +7,6 @@ data:
 model:
     mask_output: True
 
-    data_type: fp32  # or fp32 - should match training config
-    activation_bits: 32
-    weight_bits: 32
-    state_bits: 32
-
-quantization:
-    calibration_samples: 50  # samples for calibration during eval
-
 metrics:
     name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE
     flow_scaling: 128

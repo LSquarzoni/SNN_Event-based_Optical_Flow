@@ -25,7 +25,6 @@ class ConvLayer(nn.Module):
         norm=None,
         BN_momentum=0.1,
         w_scale=None,
-        quant_config=None,
     ):
         super(ConvLayer, self).__init__()
 

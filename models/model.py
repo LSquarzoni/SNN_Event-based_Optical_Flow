@@ -16,13 +16,6 @@ from .spiking_submodules import (
     ConvXLIF,
     ConvXLIFRecurrent,
 )
-from .quantized_spiking_submodules import (
-    QuantizedConvLIF,
-    QuantizedConvLIFRecurrent,
-)
-from .quantized_submodules import (
-    QuantizedConvLayer,
-)
 from .submodules import ConvGRU, ConvLayer, ConvLayer_, ConvLeaky, ConvLeakyRecurrent, ConvRecurrent
 from .unet import (
     UNetRecurrent,
@@ -31,7 +24,6 @@ from .unet import (
     SpikingMultiResUNetRecurrent,
     LeakyMultiResUNetRecurrent,
 )
-from .quantization_util import QuantizationConfig
 
 
 class E2VID(BaseModel):
@@ -806,89 +798,6 @@ class LIFFireNet(FireNet):
     pred_layer = ConvLayer
     residual = False
     w_scale_pred = 0.01
-    
-    def __init__(self, unet_kwargs):
-        # Extract quantization config if present
-        self.quant_config = QuantizationConfig(
-            data_type=unet_kwargs.get("data_type", "fp32"),
-            activation_bits=unet_kwargs.get("activation_bits", 8),
-            weight_bits=unet_kwargs.get("weight_bits", 8),
-            state_bits=unet_kwargs.get("state_bits", 8)
-        )
-        
-        # Choose neuron types based on quantization config
-        if self.quant_config.use_quantization:
-            self.head_neuron = QuantizedConvLIF
-            self.ff_neuron = QuantizedConvLIF
-            self.rec_neuron = QuantizedConvLIFRecurrent
-            self.pred_layer = QuantizedConvLayer
-        
-        super().__init__(unet_kwargs)
-    
-    def _create_layers(self, unet_kwargs):
-        """Create layers with quantization support."""
-        base_num_channels = unet_kwargs["base_num_channels"]
-        kernel_size = unet_kwargs["kernel_size"]
-        ff_act, rec_act = unet_kwargs["activations"]
-        
-        # Add quantization config to kwargs
-        layer_kwargs = self.kwargs.copy()
-        for kwargs in layer_kwargs:
-            kwargs["quant_config"] = self.quant_config
-
-        self.head = self.head_neuron(
-            self.num_bins, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[0]
-        )
-
-        self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=rec_act, **layer_kwargs[1]
-        )
-        self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[2]
-        )
-        self.R1b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[3]
-        )
-
-        self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=rec_act, **layer_kwargs[4]
-        )
-        self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[5]
-        )
-        self.R2b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[6]
-        )
-
-        self.pred = self.pred_layer(
-            base_num_channels, out_channels=2, kernel_size=1, 
-            activation="tanh", w_scale=self.w_scale_pred
-        )
-    
-    def enable_quantization_calibration(self):
-        """Enable calibration mode for all quantized layers."""
-        if not self.quant_config.use_quantization:
-            return
-            
-        for module in self.modules():
-            if hasattr(module, 'enable_calibration'):
-                module.enable_calibration()
-    
-    def disable_quantization_calibration(self):
-        """Disable calibration mode for all quantized layers."""
-        if not self.quant_config.use_quantization:
-            return
-            
-        for module in self.modules():
-            if hasattr(module, 'disable_calibration'):
-                module.disable_calibration()
 
 
 class LIFFireNet_short(FireNet_short):
@@ -902,81 +811,7 @@ class LIFFireNet_short(FireNet_short):
     pred_layer = ConvLayer
     residual = False
     w_scale_pred = 0.01
-    
-    def __init__(self, unet_kwargs):
-        # Extract quantization config if present
-        self.quant_config = QuantizationConfig(
-            data_type=unet_kwargs.get("data_type", "fp32"),
-            activation_bits=unet_kwargs.get("activation_bits", 8),
-            weight_bits=unet_kwargs.get("weight_bits", 8),
-            state_bits=unet_kwargs.get("state_bits", 8)
-        )
-        
-        # Choose neuron types based on quantization config
-        if self.quant_config.use_quantization:
-            self.head_neuron = QuantizedConvLIF
-            self.ff_neuron = QuantizedConvLIF
-            self.rec_neuron = QuantizedConvLIFRecurrent
-            self.pred_layer = QuantizedConvLayer
-        
-        super().__init__(unet_kwargs)
-    
-    def _create_layers(self, unet_kwargs):
-        """Create layers with quantization support."""
-        base_num_channels = unet_kwargs["base_num_channels"]
-        kernel_size = unet_kwargs["kernel_size"]
-        ff_act, rec_act = unet_kwargs["activations"]
-        
-        # Add quantization config to kwargs
-        layer_kwargs = self.kwargs.copy()
-        for kwargs in layer_kwargs:
-            kwargs["quant_config"] = self.quant_config
 
-        self.head = self.head_neuron(
-            self.num_bins, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[0]
-        )
-
-        self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=rec_act, **layer_kwargs[1]
-        )
-        self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[2]
-        )
-
-        self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=rec_act, **layer_kwargs[3]
-        )
-        self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, 
-            activation=ff_act, **layer_kwargs[4]
-        )
-
-        self.pred = self.pred_layer(
-            base_num_channels, out_channels=2, kernel_size=1, 
-            activation="tanh", w_scale=self.w_scale_pred
-        )
-    
-    def enable_quantization_calibration(self):
-        """Enable calibration mode for all quantized layers."""
-        if not self.quant_config.use_quantization:
-            return
-            
-        for module in self.modules():
-            if hasattr(module, 'enable_calibration'):
-                module.enable_calibration()
-    
-    def disable_quantization_calibration(self):
-        """Disable calibration mode for all quantized layers."""
-        if not self.quant_config.use_quantization:
-            return
-            
-        for module in self.modules():
-            if hasattr(module, 'disable_calibration'):
-                module.disable_calibration()
                 
 class PLIFFireNet(FireNet):
     """
