@@ -75,9 +75,12 @@ class ConvLIF(nn.Module):
                 padding=padding,
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
-                input_quant=None, # Int8ActPerTensorFloat
-                output_quant=None, # Int8ActPerTensorFloat
-                return_quant_tensor=False,
+                input_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                output_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                return_quant_tensor=True,
+                scaling_per_output_channel=True,
+                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                scaling_stats_permute_dims=(1, 0, 2, 3),
             )
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
@@ -503,9 +506,12 @@ class ConvLIFRecurrent(nn.Module):
                 padding=padding,
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
-                input_quant=None, # Int8ActPerTensorFloat
-                output_quant=None, # Int8ActPerTensorFloat
-                return_quant_tensor=False,
+                input_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                output_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                return_quant_tensor=True,
+                scaling_per_output_channel=True,
+                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.rec = QuantConv2d(
                 hidden_size,
@@ -514,9 +520,12 @@ class ConvLIFRecurrent(nn.Module):
                 padding=padding,
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
-                input_quant=None, # Int8ActPerTensorFloat
-                output_quant=None, # Int8ActPerTensorFloat
-                return_quant_tensor=False,
+                input_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                output_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                return_quant_tensor=True,
+                scaling_per_output_channel=True,
+                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                scaling_stats_permute_dims=(1, 0, 2, 3),
             )
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)

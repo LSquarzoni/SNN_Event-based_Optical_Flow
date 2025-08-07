@@ -9,6 +9,7 @@ model:
     quantization:
         enabled: True
         type: int8 # int8 or int16
+        PTQ: True # Post Training Quantization enabled
 
 metrics:
     name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE

@@ -6,6 +6,11 @@ import torch
 from torch.optim import *
 from torchinfo import summary
 
+from brevitas.graph.calibrate import calibration_mode
+from brevitas import config as cf
+
+cf.IGNORE_MISSING_KEYS = True
+
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
 from loss.flow import FWL, RSAT, AEE, NEE, AE
@@ -39,6 +44,23 @@ from utils.utils import load_model, create_model_dir
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization, vis_activity
 
+def calibrate_model(calibration_loader, quant_model, device, args):
+    quant_model = quant_model.to(device)
+    quant_model.eval()
+    with torch.no_grad():
+        # Put the model in calibration mode to collect statistics
+        # Quantization is automatically disabled during the calibration, and re-enabled at the end
+        with calibration_mode(quant_model):
+            for i, inputs in enumerate(calibration_loader):
+                event_voxel = inputs["event_voxel"].to(device)
+                event_cnt = inputs["event_cnt"].to(device)
+                    
+                print(f'Calibration iteration {i}')
+                quant_model(event_voxel, event_cnt)
+                
+                if i >= 50:  # Calibrate on first 50 batches
+                    break
+    return quant_model
 
 def test(args, config_parser):
     mlflow.set_tracking_uri(args.path_mlflow)
@@ -121,6 +143,21 @@ def test(args, config_parser):
         worker_init_fn=config_parser.worker_init_fn,
         **kwargs,
     )
+    
+    # Quantization calibration for Post Training Uqantization
+    if config['model']['quantization']['PTQ']:
+        model = calibrate_model(dataloader, model, device, args)
+        
+        # Reset the dataloader for actual inference
+        data = H5Loader(config, config["model"]["num_bins"])
+        dataloader = torch.utils.data.DataLoader(
+            data,
+            drop_last=True,
+            batch_size=config["loader"]["batch_size"],
+            collate_fn=data.custom_collate,
+            worker_init_fn=config_parser.worker_init_fn,
+            **kwargs,
+        )
 
     # inference loop
     idx_AEE = 0

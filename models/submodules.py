@@ -8,7 +8,7 @@ import torch.nn.functional as f
 
 import snntorch
 import brevitas
-from brevitas.nn import QuantConv2d
+from brevitas.nn import QuantConv2d, QuantTanh
 from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
@@ -47,10 +47,14 @@ class ConvLayer(nn.Module):
                 padding=padding,
                 bias=bias,
                 weight_quant=Int8WeightPerTensorFloat,
-                input_quant=None, # Int8ActPerTensorFloat
-                output_quant=None, # Int8ActPerTensorFloat
-                return_quant_tensor=False,
+                input_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                output_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
+                return_quant_tensor=True,
+                scaling_per_output_channel=True,
+                per_channel_broadcastable_shape=(1, out_channels, 1, 1),
+                scaling_stats_permute_dims=(1, 0, 2, 3),
             )
+            self.activation = QuantTanh
         else:
             self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
             
