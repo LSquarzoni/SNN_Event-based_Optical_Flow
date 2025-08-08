@@ -49,7 +49,7 @@ class ConvLayer(nn.Module):
                 weight_quant=Int8WeightPerTensorFloat,
                 input_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
                 output_quant=Int8ActPerTensorFloat, # Int8ActPerTensorFloat
-                return_quant_tensor=True,
+                return_quant_tensor=False,
                 scaling_per_output_channel=True,
                 per_channel_broadcastable_shape=(1, out_channels, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),

@@ -5,6 +5,9 @@ import numpy as np
 import torch
 from torch.optim import *
 from torchinfo import summary
+from brevitas import config as cf
+
+cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader

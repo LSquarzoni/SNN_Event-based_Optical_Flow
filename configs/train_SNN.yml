@@ -20,7 +20,7 @@ model:
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         type: int8 # int8 or int16
 
 spiking_neuron:
