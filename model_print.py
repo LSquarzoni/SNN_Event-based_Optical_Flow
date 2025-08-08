@@ -14,26 +14,13 @@ from dataloader.h5 import H5Loader
 from loss.flow import FWL, RSAT, AEE, NEE, AE
 from models.model import (
     FireNet,
-    RNNFireNet,
-    LeakyFireNet,
+    FireNet_short,
     FireFlowNet,
-    LeakyFireFlowNet,
-    E2VID,
-    EVFlowNet,
-    RecEVFlowNet,
-    LeakyRecEVFlowNet,
-    RNNRecEVFlowNet,
 )
 from models.model import (
     LIFFireNet,
-    PLIFFireNet,
-    ALIFFireNet,
-    XLIFFireNet,
+    LIFFireNet_short,
     LIFFireFlowNet,
-    SpikingRecEVFlowNet,
-    PLIFRecEVFlowNet,
-    ALIFRecEVFlowNet,
-    XLIFRecEVFlowNet,
 )
 from utils.iwe import compute_pol_iwe
 from utils.utils import load_model, create_model_dir

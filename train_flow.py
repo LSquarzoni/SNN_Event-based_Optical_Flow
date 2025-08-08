@@ -11,27 +11,12 @@ from loss.flow import EventWarping
 from models.model import (
     FireNet,
     FireNet_short,
-    RNNFireNet,
-    LeakyFireNet,
     FireFlowNet,
-    LeakyFireFlowNet,
-    E2VID,
-    EVFlowNet,
-    RecEVFlowNet,
-    LeakyRecEVFlowNet,
-    RNNRecEVFlowNet,
 )
 from models.model import (
     LIFFireNet,
     LIFFireNet_short,
-    PLIFFireNet,
-    ALIFFireNet,
-    XLIFFireNet,
     LIFFireFlowNet,
-    SpikingRecEVFlowNet,
-    PLIFRecEVFlowNet,
-    ALIFRecEVFlowNet,
-    XLIFRecEVFlowNet,
 )
 from utils.gradients import get_grads
 from utils.utils import load_model, save_csv, save_diff, save_model
@@ -123,7 +108,6 @@ def train(args, config_parser):
                 with torch.no_grad():
                     if avg_train_loss < best_loss - 1e-6:  # small delta to prevent stopping on tiny changes
                         model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_test/") # model: LIFFireNet             SAVING PATH ---------------------------------------------- 
-                        #model_save_path = get_next_model_folder("mlruns/0/models/LIFEVFlowNet/") # model: SpikingRecEVFlowNet
                         mlflow.pytorch.save_model(model, model_save_path)
                         best_loss = avg_train_loss
                         epochs_without_improvement = 0
