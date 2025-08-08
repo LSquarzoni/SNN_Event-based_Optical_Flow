@@ -37,10 +37,9 @@ def test(args, config_parser):
     # initialize settings
     device = config_parser.device
     kwargs = config_parser.loader_kwargs
-
-    # model initialization and settings
+    
+    # model initialization and settings 
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    model = load_model(args.runid, model, device)
     model.eval()
 
     # data loader

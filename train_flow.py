@@ -107,8 +107,21 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if avg_train_loss < best_loss - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_test/") # model: LIFFireNet             SAVING PATH ---------------------------------------------- 
-                        mlflow.pytorch.save_model(model, model_save_path)
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_test/")
+                        os.makedirs(model_save_path, exist_ok=True)
+                        
+                        # Save just the state dict instead of the full model
+                        torch.save({
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'epoch': data.epoch,
+                            'loss': avg_train_loss,
+                            'config': config
+                        }, os.path.join(model_save_path, 'model.pth'))
+                        
+                        # Also log with MLflow but without autolog to avoid duplication
+                        mlflow.log_artifact(os.path.join(model_save_path, 'model.pth'))
+                        
                         best_loss = avg_train_loss
                         epochs_without_improvement = 0
                     else:
