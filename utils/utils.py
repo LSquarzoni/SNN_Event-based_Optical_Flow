@@ -21,8 +21,19 @@ def load_model(prev_runid, model, device, model_path_dir=""):
         model_dir = model_dir[7:]
 
     if os.path.isfile(model_dir):
-        model_loaded = torch.load(model_dir, map_location=device, weights_only=False)
-        model.load_state_dict(model_loaded.state_dict())
+        checkpoint = torch.load(model_dir, map_location=device, weights_only=False)
+        
+        # Check if the loaded object is a dictionary (your new format) or a model object (old format)
+        if isinstance(checkpoint, dict):
+            if 'model_state_dict' in checkpoint:
+                model.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                # Fallback: assume the dict itself is the state dict
+                model.load_state_dict(checkpoint)
+        else:
+            # Old format: the checkpoint is the model object itself
+            model.load_state_dict(checkpoint.state_dict())
+            
         print("Model restored from " + prev_runid + "\n")
     else:
         print("No model found at " + prev_runid + "\n")

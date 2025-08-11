@@ -19,6 +19,7 @@ class SNNtorch_ConvLIF(nn.Module):
     Design choices:
     - Uses snn.Leaky for LIF dynamics
     - Maintains compatibility with existing model interface
+    - Per-channel learnable parameters like original implementation
     - Supports quantization and normalization options
     """
 
@@ -46,14 +47,20 @@ class SNNtorch_ConvLIF(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         
-        # Convert leak parameters to beta for snn.Leaky (broadcastable shape for conv)
-        initial_beta = torch.sigmoid(torch.randn(1, hidden_size, 1, 1) * leak[1] + leak[0])
+        # Per-channel learnable parameters matching original implementation
+        self.leak_raw = nn.Parameter(torch.randn(hidden_size, 1, 1) * leak[1] + leak[0])
+        self.thresh_raw = nn.Parameter(torch.randn(hidden_size, 1, 1) * thresh[1] + thresh[0])
         
-        # Convert threshold parameters (broadcastable shape for conv)
-        initial_thresh = torch.clamp(torch.randn(1, hidden_size, 1, 1) * thresh[1] + thresh[0], min=0.01)
-
-        # Create snn.Leaky layer with broadcastable parameters
+        # Store learning flags
+        self.learn_leak = learn_leak
+        self.learn_thresh = learn_thresh
+        
+        # Create snn.Leaky layer - we'll update its parameters dynamically
         reset_mechanism = "zero" if hard_reset else "subtract"
+        
+        # Initial values for SNNTorch (will be updated in forward)
+        initial_beta = torch.sigmoid(self.leak_raw.data)
+        initial_thresh = torch.clamp(self.thresh_raw.data, min=0.01)
 
         # Quantization checking
         if quantization_config is not None and quantization_config["enabled"]:
@@ -74,10 +81,10 @@ class SNNtorch_ConvLIF(nn.Module):
             )
             q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
             self.lif = snn.Leaky(
-                beta=initial_beta,  # Shape: (1, hidden_size, 1, 1)
-                threshold=initial_thresh,  # Shape: (1, hidden_size, 1, 1)
-                learn_beta=learn_leak,
-                learn_threshold=learn_thresh,
+                beta=initial_beta,
+                threshold=initial_thresh,
+                learn_beta=False,  # We handle learning manually
+                learn_threshold=False,  # We handle learning manually
                 reset_mechanism=reset_mechanism,
                 reset_delay=False,
                 state_quant=q_lif,
@@ -85,10 +92,10 @@ class SNNtorch_ConvLIF(nn.Module):
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
             self.lif = snn.Leaky(
-                beta=initial_beta,  # Shape: (1, hidden_size, 1, 1)
-                threshold=initial_thresh,  # Shape: (1, hidden_size, 1, 1)
-                learn_beta=learn_leak,
-                learn_threshold=learn_thresh,
+                beta=initial_beta,
+                threshold=initial_thresh,
+                learn_beta=False,  # We handle learning manually
+                learn_threshold=False,  # We handle learning manually
                 reset_mechanism=reset_mechanism,
                 reset_delay=False,
             )
@@ -111,6 +118,17 @@ class SNNtorch_ConvLIF(nn.Module):
             self.norm = None
 
     def forward(self, input_, prev_state, residual=0):
+        # Update SNNTorch parameters to match learned values
+        if self.learn_leak:
+            beta = torch.sigmoid(self.leak_raw)
+            # Update the SNNTorch neuron's beta parameter
+            self.lif.beta = beta
+        
+        if self.learn_thresh:
+            thresh = torch.clamp(self.thresh_raw, min=0.01)
+            # Update the SNNTorch neuron's threshold parameter
+            self.lif.threshold = thresh
+        
         # input current
         if self.norm is not None:
             input_ = self.norm(input_)
@@ -141,6 +159,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
     Design choices:
     - Uses snn.Leaky for LIF dynamics
     - Maintains compatibility with existing model interface
+    - Per-channel learnable parameters like original implementation
     - Supports quantization and normalization options
     - Includes recurrent connections
     """
@@ -168,14 +187,20 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         
-        # Convert leak parameters to beta for snn.Leaky (broadcastable shape for conv)
-        initial_beta = torch.sigmoid(torch.randn(1, hidden_size, 1, 1) * leak[1] + leak[0])
+        # Per-channel learnable parameters matching original implementation
+        self.leak_raw = nn.Parameter(torch.randn(hidden_size, 1, 1) * leak[1] + leak[0])
+        self.thresh_raw = nn.Parameter(torch.randn(hidden_size, 1, 1) * thresh[1] + thresh[0])
         
-        # Convert threshold parameters (broadcastable shape for conv)
-        initial_thresh = torch.clamp(torch.randn(1, hidden_size, 1, 1) * thresh[1] + thresh[0], min=0.01)
+        # Store learning flags
+        self.learn_leak = learn_leak
+        self.learn_thresh = learn_thresh
 
-        # Create snn.Leaky layer with broadcastable parameters
+        # Create snn.Leaky layer - we'll update its parameters dynamically
         reset_mechanism = "zero" if hard_reset else "subtract"
+        
+        # Initial values for SNNTorch (will be updated in forward)
+        initial_beta = torch.sigmoid(self.leak_raw.data)
+        initial_thresh = torch.clamp(self.thresh_raw.data, min=0.01)
         
         # Quantization checking
         if quantization_config is not None and quantization_config["enabled"]:
@@ -209,10 +234,10 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             )
             q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
             self.lif = snn.Leaky(
-                beta=initial_beta,  # Shape: (1, hidden_size, 1, 1)
-                threshold=initial_thresh,  # Shape: (1, hidden_size, 1, 1)
-                learn_beta=learn_leak,
-                learn_threshold=learn_thresh,
+                beta=initial_beta,
+                threshold=initial_thresh,
+                learn_beta=False,  # We handle learning manually
+                learn_threshold=False,  # We handle learning manually
                 reset_mechanism=reset_mechanism,
                 reset_delay=False,
                 state_quant=q_lif,
@@ -221,10 +246,10 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.lif = snn.Leaky(
-                beta=initial_beta,  # Shape: (1, hidden_size, 1, 1)
-                threshold=initial_thresh,  # Shape: (1, hidden_size, 1, 1)
-                learn_beta=learn_leak,
-                learn_threshold=learn_thresh,
+                beta=initial_beta,
+                threshold=initial_thresh,
+                learn_beta=False,  # We handle learning manually
+                learn_threshold=False,  # We handle learning manually
                 reset_mechanism=reset_mechanism,
                 reset_delay=False,
             )
@@ -254,6 +279,17 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.norm_rec = None
 
     def forward(self, input_, prev_state):
+        # Update SNNTorch parameters to match learned values
+        if self.learn_leak:
+            beta = torch.sigmoid(self.leak_raw)
+            # Update the SNNTorch neuron's beta parameter
+            self.lif.beta = beta
+        
+        if self.learn_thresh:
+            thresh = torch.clamp(self.thresh_raw, min=0.01)
+            # Update the SNNTorch neuron's threshold parameter
+            self.lif.threshold = thresh
+        
         # input current
         if self.norm_ff is not None:
             input_ = self.norm_ff(input_)

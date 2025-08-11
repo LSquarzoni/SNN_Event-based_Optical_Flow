@@ -106,7 +106,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_ch16/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
     #model_path_dir = "mlruns/0/models/LIFFireNet_short/29/data/model.pth" # runid: 0067d60f138d4c9d9995779f1ace733b
     #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
-    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_test//model.pth" # runid: f6ed95cd70d244bea4e9e95bf8685356
+    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_test/28/model.pth" # runid: f6ed95cd70d244bea4e9e95bf8685356
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
