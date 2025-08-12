@@ -61,9 +61,11 @@ class SNNtorch_ConvLIF(nn.Module):
         # Initial values for SNNTorch (will be updated in forward)
         initial_beta = torch.sigmoid(self.leak_raw.data)
         initial_thresh = torch.clamp(self.thresh_raw.data, min=0.01)
+        
+        self.quantization_config = quantization_config["enabled"]
 
         # Quantization checking
-        if quantization_config is not None and quantization_config["enabled"]:
+        if quantization_config is not None and self.quantization_config:
             self.ff = QuantConv2d(
                 input_size,
                 hidden_size,
@@ -89,6 +91,7 @@ class SNNtorch_ConvLIF(nn.Module):
                 reset_delay=False,
                 state_quant=q_lif,
             )
+            self.quant_identity = QuantIdentity(return_quant_tensor=True)
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
             self.lif = snn.Leaky(
@@ -128,7 +131,7 @@ class SNNtorch_ConvLIF(nn.Module):
             thresh = torch.clamp(self.thresh_raw, min=0.01)
             # Update the SNNTorch neuron's threshold parameter
             self.lif.threshold = thresh
-        
+
         # input current
         if self.norm is not None:
             input_ = self.norm(input_)
@@ -205,7 +208,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         self.quantization_config = quantization_config["enabled"]
 
         # Quantization checking
-        if quantization_config is not None and quantization_config["enabled"]:
+        if quantization_config is not None and self.quantization_config:
             self.ff = QuantConv2d(
                 input_size,
                 hidden_size,
@@ -214,8 +217,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
                 input_quant=Int8ActPerTensorFloat,
-                output_quant=Int8ActPerTensorFloat,
-                return_quant_tensor=True,
+                output_quant=None,
+                return_quant_tensor=False,
                 scaling_per_output_channel=True,
                 per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),
@@ -228,8 +231,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
                 input_quant=Int8ActPerTensorFloat,
-                output_quant=Int8ActPerTensorFloat,
-                return_quant_tensor=True,
+                output_quant=None,
+                return_quant_tensor=False,
                 scaling_per_output_channel=True,
                 per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),
