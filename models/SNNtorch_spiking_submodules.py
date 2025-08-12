@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import snntorch as snn
 from snntorch.functional import quant
 import brevitas
-from brevitas.nn import QuantConv2d
+from brevitas.nn import QuantConv2d, QuantIdentity
 from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
@@ -202,6 +202,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         initial_beta = torch.sigmoid(self.leak_raw.data)
         initial_thresh = torch.clamp(self.thresh_raw.data, min=0.01)
         
+        self.quantization_config = quantization_config["enabled"]
+
         # Quantization checking
         if quantization_config is not None and quantization_config["enabled"]:
             self.ff = QuantConv2d(
@@ -242,6 +244,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 reset_delay=False,
                 state_quant=q_lif,
             )
+            self.quant_identity = QuantIdentity(return_quant_tensor=True)
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
@@ -309,7 +312,10 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         rec = self.rec(prev_spk)
 
         # Combine feedforward and recurrent currents
-        total_current = ff + rec
+        if self.quantization_config:
+            total_current = self.quant_identity(ff) + self.quant_identity(rec)
+        else:
+            total_current = ff + rec
 
         # Apply snn.Leaky neuron
         spk_out, mem_out = self.lif(total_current, mem)

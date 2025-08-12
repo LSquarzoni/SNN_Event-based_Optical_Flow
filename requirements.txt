@@ -13,3 +13,7 @@ matplotlib==3.3.2
 progress
 mlflow
 brevitas
+netron
+onnx
+onnxruntime
+onnxoptimizer
