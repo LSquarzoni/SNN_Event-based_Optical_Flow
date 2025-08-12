@@ -6,3 +6,4 @@ mlruns/
 *.pyc
 venv/
 datasets/
+exported_models/
