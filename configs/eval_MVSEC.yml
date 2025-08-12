@@ -7,9 +7,9 @@ data:
 model:
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         type: int8 # int8 or int16
-        PTQ: True # Post Training Quantization enabled or not
+        PTQ: False # Post Training Quantization enabled or not
 
 metrics:
     name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE
