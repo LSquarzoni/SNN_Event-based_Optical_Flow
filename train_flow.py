@@ -107,7 +107,7 @@ def train(args, config_parser):
 
                 with torch.no_grad():
                     if avg_train_loss < best_loss - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_short/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_4ch/")
                         os.makedirs(model_save_path, exist_ok=True)
                         
                         # Save just the state dict instead of the full model

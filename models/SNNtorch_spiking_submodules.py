@@ -89,7 +89,7 @@ class SNNtorch_ConvLIF(nn.Module):
                 learn_threshold=False,  # We handle learning manually
                 reset_mechanism=reset_mechanism,
                 reset_delay=False,
-                state_quant=q_lif,
+                #state_quant=q_lif,
             )
             self.quant_identity = QuantIdentity(return_quant_tensor=True)
         else:
@@ -217,8 +217,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
                 input_quant=Int8ActPerTensorFloat,
-                output_quant=None,
-                return_quant_tensor=False,
+                output_quant=Int8ActPerTensorFloat,
+                return_quant_tensor=True,
                 scaling_per_output_channel=True,
                 per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),
@@ -231,8 +231,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 bias=False,
                 weight_quant=Int8WeightPerTensorFloat,
                 input_quant=Int8ActPerTensorFloat,
-                output_quant=None,
-                return_quant_tensor=False,
+                output_quant=Int8ActPerTensorFloat,
+                return_quant_tensor=True,
                 scaling_per_output_channel=True,
                 per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),
@@ -245,7 +245,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 learn_threshold=False,  # We handle learning manually
                 reset_mechanism=reset_mechanism,
                 reset_delay=False,
-                state_quant=q_lif,
+                #state_quant=q_lif,
             )
             self.quant_identity = QuantIdentity(return_quant_tensor=True)
         else:

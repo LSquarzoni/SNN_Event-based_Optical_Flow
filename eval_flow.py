@@ -103,13 +103,15 @@ def test(args, config_parser):
 
     # model initialization and settings
     #model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # runid: fa926a65776541a987457014f5121f34          MODEL PATH FROM MY TRAINING ---------------------------
-    #model_path_dir = "mlruns/0/models/LIFFireNet_ch16/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
+    #model_path_dir = "mlruns/0/models/LIFFireNet_16ch/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
     #model_path_dir = "mlruns/0/models/LIFFireNet_short/29/data/model.pth" # runid: 0067d60f138d4c9d9995779f1ace733b
     #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
     
     model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch//model.pth" # runid: 0e2e489c048e4a9c80553ad7cc84e1c2
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short//model.pth" # runid: 46e0c3f20db543b0afbceeac7786291d
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch/29/model.pth" # runid: 0e2e489c048e4a9c80553ad7cc84e1c2
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch//model.pth" # runid: f9c47172b72242198cf80f3887109add
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch//model.pth" # runid: b6062d12fd79418cab1af2f40adb0069
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short/37/model.pth" # runid: 46e0c3f20db543b0afbceeac7786291d
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
