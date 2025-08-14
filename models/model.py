@@ -30,125 +30,6 @@ from .unet import (
 )
 
 
-class E2VID(BaseModel):
-    """
-    E2VID architecture (adapted for optical flow estimation), as described in the paper "High Speed and High
-    Dynamic Range Video with an Event Camera", Rebecq et al., TPAMI 2021.
-    """
-
-    def __init__(self, unet_kwargs):
-        super().__init__()
-
-        norm = None
-        use_upsample_conv = True
-        if "norm" in unet_kwargs.keys():
-            norm = unet_kwargs["norm"]
-        if "use_upsample_conv" in unet_kwargs.keys():
-            use_upsample_conv = unet_kwargs["use_upsample_conv"]
-
-        E2VID_kwargs = {
-            "base_num_channels": unet_kwargs["base_num_channels"],
-            "num_encoders": 3,
-            "num_residual_blocks": 2,
-            "num_output_channels": 2,
-            "skip_type": "sum",
-            "norm": norm,
-            "use_upsample_conv": use_upsample_conv,
-            "kernel_size": unet_kwargs["kernel_size"],
-            "channel_multiplier": 2,
-            "recurrent_block_type": "convlstm",
-            "final_activation": "tanh",
-        }
-
-        self.crop = None
-        self.mask = unet_kwargs["mask_output"]
-        self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
-        self.encoding = unet_kwargs["encoding"]
-        self.num_bins = unet_kwargs["num_bins"]
-        self.num_encoders = E2VID_kwargs["num_encoders"]
-
-        unet_kwargs.update(E2VID_kwargs)
-        unet_kwargs.pop("name", None)
-        unet_kwargs.pop("encoding", None)
-        unet_kwargs.pop("round_encoding", None)
-        unet_kwargs.pop("norm_input", None)
-        unet_kwargs.pop("mask_output", None)
-        unet_kwargs.pop("spiking_neuron", None)
-
-        self.unetrecurrent = UNetRecurrent(unet_kwargs)
-
-    @property
-    def states(self):
-        return copy_states(self.unetrecurrent.states)
-
-    @states.setter
-    def states(self, states):
-        self.unetrecurrent.states = states
-
-    def detach_states(self):
-        detached_states = []
-        for state in self.unetrecurrent.states:
-            if type(state) is tuple:
-                tmp = []
-                for hidden in state:
-                    tmp.append(hidden.detach())
-                detached_states.append(tuple(tmp))
-            else:
-                detached_states.append(state.detach())
-        self.unetrecurrent.states = detached_states
-
-    def reset_states(self):
-        self.unetrecurrent.states = [None] * self.unetrecurrent.num_states
-
-    def init_cropping(self, width, height, safety_margin=0):
-        self.crop = CropParameters(width, height, self.num_encoders, safety_margin)
-
-    def forward(self, event_voxel, event_cnt, log=False):
-        """
-        :param event_voxel: N x num_bins x H x W
-        :param event_cnt: N x 4 x H x W per-polarity event cnt and average timestamp
-        :param log: log activity
-        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor.
-        """
-
-        # input encoding
-        if self.encoding == "voxel":
-            x = event_voxel
-        elif self.encoding == "cnt" and self.num_bins == 2:
-            x = event_cnt
-        else:
-            print("Model error: Incorrect input encoding.")
-            raise AttributeError
-
-        # normalize input
-        if self.norm_input:
-            mean, stddev = (
-                x[x != 0].mean(),
-                x[x != 0].std(),
-            )
-            x[x != 0] = (x[x != 0] - mean) / stddev
-
-        # pad input
-        if self.crop is not None:
-            x = self.crop.pad(x)
-
-        # forward pass
-        flow = self.unetrecurrent.forward(x)
-
-        # log activity
-        if log:
-            raise NotImplementedError("Activity logging not implemented")
-        else:
-            activity = None
-
-        # crop output
-        if self.crop is not None:
-            flow = flow[:, :, self.crop.iy0 : self.crop.iy1, self.crop.ix0 : self.crop.ix1]
-            flow = flow.contiguous()
-
-        return {"flow": [flow], "activity": activity}
-
-
 class FireNet(BaseModel):
     """
     FireNet architecture (adapted for optical flow estimation), as described in the paper "Fast Image
@@ -720,81 +601,6 @@ class SpikingRecEVFlowNet(RecEVFlowNet):
     spiking_feedforward_block_type = "lif"
 
 
-class PLIFRecEVFlowNet(RecEVFlowNet):
-    """
-    Spiking recurrent version of the EV-FlowNet architecture from the paper "EV-FlowNet: Self-Supervised Optical
-    Flow for Event-based Cameras", Zhu et al., RSS 2018.
-    """
-
-    unet_type = SpikingMultiResUNetRecurrent
-    recurrent_block_type = "plif"
-    spiking_feedforward_block_type = "plif"
-
-
-class ALIFRecEVFlowNet(RecEVFlowNet):
-    """
-    Spiking recurrent version of the EV-FlowNet architecture from the paper "EV-FlowNet: Self-Supervised Optical
-    Flow for Event-based Cameras", Zhu et al., RSS 2018.
-    """
-
-    unet_type = SpikingMultiResUNetRecurrent
-    recurrent_block_type = "alif"
-    spiking_feedforward_block_type = "alif"
-
-
-class XLIFRecEVFlowNet(RecEVFlowNet):
-    """
-    Spiking recurrent version of the EV-FlowNet architecture from the paper "EV-FlowNet: Self-Supervised Optical
-    Flow for Event-based Cameras", Zhu et al., RSS 2018.
-    """
-
-    unet_type = SpikingMultiResUNetRecurrent
-    recurrent_block_type = "xlif"
-    spiking_feedforward_block_type = "xlif"
-
-
-class RNNRecEVFlowNet(RecEVFlowNet):
-    """
-    Recurrent version of the EV-FlowNet architecture from the paper "EV-FlowNet: Self-Supervised Optical
-    Flow for Event-based Cameras", Zhu et al., RSS 2018.
-    """
-
-    unet_type = MultiResUNetRecurrent
-    recurrent_block_type = "convrnn"
-
-
-class LeakyRecEVFlowNet(RecEVFlowNet):
-    """
-    Leaky recurrent version of the EV-FlowNet architecture from the paper "EV-FlowNet: Self-Supervised Optical
-    Flow for Event-based Cameras", Zhu et al., RSS 2018.
-    """
-
-    unet_type = LeakyMultiResUNetRecurrent
-    recurrent_block_type = "convleaky"
-
-
-class RNNFireNet(FireNet):
-    """
-    Recurrent FireNet architecture of convolutional neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvLayer_
-    ff_neuron = ConvLayer_
-    rec_neuron = ConvRecurrent
-    residual = False
-
-
-class LeakyFireNet(FireNet):
-    """
-    Recurrent FireNet architecture of leaky/stateful convolutional neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvLeaky
-    ff_neuron = ConvLeaky
-    rec_neuron = ConvLeakyRecurrent
-    residual = False
-
-
 class LIFFireNet(FireNet):
     """
     Spiking FireNet architecture of LIF neurons for dense optical flow estimation from events.
@@ -818,61 +624,14 @@ class LIFFireNet_short(FireNet_short):
     residual = False
     w_scale_pred = 0.01
 
-                
-class PLIFFireNet(FireNet):
-    """
-    Spiking FireNet architecture of PLIF neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvPLIF
-    ff_neuron = ConvPLIF
-    rec_neuron = ConvPLIFRecurrent
-    residual = False
-    w_scale_pred = 0.01
-
-
-class ALIFFireNet(FireNet):
-    """
-    Spiking FireNet architecture of ALIF neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvALIF
-    ff_neuron = ConvALIF
-    rec_neuron = ConvALIFRecurrent
-    residual = False
-    w_scale_pred = 0.01
-
-
-class XLIFFireNet(FireNet):
-    """
-    Spiking FireNet architecture of XLIF neurons for dense optical flow estimation from events.
-    """
-
-    head_neuron = ConvXLIF
-    ff_neuron = ConvXLIF
-    rec_neuron = ConvXLIFRecurrent
-    residual = False
-    w_scale_pred = 0.01
-
 
 class LIFFireFlowNet(FireNet):
     """
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = ConvLIF
-    ff_neuron = ConvLIF
-    rec_neuron = ConvLIF
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
-
-
-class LeakyFireFlowNet(FireNet):
-    """
-    FireFlowNet architecture with leaky internal state.
-    """
-
-    head_neuron = ConvLeaky
-    ff_neuron = ConvLeaky
-    rec_neuron = ConvLeaky
-    residual = False
