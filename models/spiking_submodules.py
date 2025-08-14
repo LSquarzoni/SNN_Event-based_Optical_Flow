@@ -323,15 +323,6 @@ class SpikingRecurrentConvLayer(nn.Module):
         if recurrent_block_type == "lif":
             FeedforwardBlock = ConvLIF
             RecurrentBlock = ConvLIFRecurrent
-        elif recurrent_block_type == "alif":
-            FeedforwardBlock = ConvALIF
-            RecurrentBlock = ConvALIFRecurrent
-        elif recurrent_block_type == "plif":
-            FeedforwardBlock = ConvPLIF
-            RecurrentBlock = ConvPLIFRecurrent
-        else:
-            FeedforwardBlock = ConvXLIF
-            RecurrentBlock = ConvXLIFRecurrent
         kwargs.pop("spiking_feedforward_block_type", None)
 
         self.conv = FeedforwardBlock(
@@ -375,12 +366,6 @@ class SpikingResidualBlock(nn.Module):
         assert spiking_feedforward_block_type in ["lif", "alif", "plif", "xlif"]
         if spiking_feedforward_block_type == "lif":
             FeedforwardBlock = ConvLIF
-        elif spiking_feedforward_block_type == "alif":
-            FeedforwardBlock = ConvALIF
-        elif spiking_feedforward_block_type == "plif":
-            FeedforwardBlock = ConvPLIF
-        else:
-            FeedforwardBlock = ConvXLIF
 
         self.conv1 = FeedforwardBlock(
             in_channels, out_channels, kernel_size=3, stride=stride, activation=activation, **kwargs
@@ -421,12 +406,6 @@ class SpikingUpsampleConvLayer(nn.Module):
         assert spiking_feedforward_block_type in ["lif", "alif", "plif", "xlif"]
         if spiking_feedforward_block_type == "lif":
             FeedforwardBlock = ConvLIF
-        elif spiking_feedforward_block_type == "alif":
-            FeedforwardBlock = ConvALIF
-        elif spiking_feedforward_block_type == "plif":
-            FeedforwardBlock = ConvPLIF
-        else:
-            FeedforwardBlock = ConvXLIF
 
         self.conv2d = FeedforwardBlock(
             in_channels, out_channels, kernel_size, stride=stride, activation=activation, **kwargs
