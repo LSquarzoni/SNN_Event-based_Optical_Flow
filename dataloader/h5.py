@@ -293,10 +293,39 @@ class H5Loader(BaseDataLoader):
                 # For events mode, use std_resolution as the original size
                 original_height, original_width = self.config["loader"]["std_resolution"]
 
+            # Filter events for events mode if cropping is needed
+            if (self.config["data"]["mode"] == "events" and 
+                original_height is not None and original_width is not None and 
+                (target_height < original_height or target_width < original_width) and
+                xs.shape[0] > 0):
+                
+                # Calculate crop boundaries
+                crop_y_start = (original_height - target_height) // 2
+                crop_y_end = crop_y_start + target_height
+                crop_x_start = (original_width - target_width) // 2
+                crop_x_end = crop_x_start + target_width
+                
+                # Create mask for events within crop region
+                event_mask = ((ys >= crop_y_start) & (ys < crop_y_end) & 
+                              (xs >= crop_x_start) & (xs < crop_x_end))
+                
+                # Filter events
+                xs = xs[event_mask]
+                ys = ys[event_mask]
+                ts = ts[event_mask]
+                ps = ps[event_mask]
+                
+                # Adjust coordinates to new coordinate system
+                xs = xs - crop_x_start
+                ys = ys - crop_y_start
+                
+                # Update original resolution for encoding creation
+                original_height, original_width = target_height, target_width
+
             # data augmentation
             xs, ys, ps = self.augment_events(xs, ys, ps, batch)
 
-            # events to tensors
+            # events to tensors (now using filtered events for events mode)
             event_cnt = self.create_cnt_encoding(xs, ys, ps)
             event_mask = self.create_mask_encoding(xs, ys, ps)
             event_voxel = self.create_voxel_encoding(xs, ys, ts, ps)
@@ -351,47 +380,50 @@ class H5Loader(BaseDataLoader):
         output = {}
 
         # Check if cropping is needed (when target size is smaller than original size)
-        if (original_height is not None and original_width is not None and 
+        # Note: For events mode, filtering was already done above
+        if (self.config["data"]["mode"] != "events" and 
+            original_height is not None and original_width is not None and 
             (target_height < original_height or target_width < original_width)):
-            # Initialize center crop transform
-            center_crop = transforms.CenterCrop((target_height, target_width))
             
-            # Apply center cropping to tensor-based encodings
-            output["event_cnt"] = center_crop(event_cnt)
-            output["event_voxel"] = center_crop(event_voxel)
-            output["event_mask"] = center_crop(event_mask)
+                # Initialize center crop transform
+                center_crop = transforms.CenterCrop((target_height, target_width))
             
-            # Filter event_list based on crop boundaries
-            crop_y_start = (original_height - target_height) // 2
-            crop_y_end = crop_y_start + target_height
-            crop_x_start = (original_width - target_width) // 2
-            crop_x_end = crop_x_start + target_width
+                # Apply center cropping to tensor-based encodings
+                output["event_cnt"] = center_crop(event_cnt)
+                output["event_voxel"] = center_crop(event_voxel)
+                output["event_mask"] = center_crop(event_mask)
             
-            # Create mask for events within crop region
-            # event_list shape: [4, N] where columns are [ts, y, x, p]
-            if event_list.numel() > 0:
-                event_mask = ((event_list[1, :] >= crop_y_start) & (event_list[1, :] < crop_y_end) & 
-                              (event_list[2, :] >= crop_x_start) & (event_list[2, :] < crop_x_end))
+                # Filter event_list based on crop boundaries
+                crop_y_start = (original_height - target_height) // 2
+                crop_y_end = crop_y_start + target_height
+                crop_x_start = (original_width - target_width) // 2
+                crop_x_end = crop_x_start + target_width
+            
+                # Create mask for events within crop region
+                # event_list shape: [4, N] where columns are [ts, y, x, p]
+                if event_list.numel() > 0:
+                    event_mask = ((event_list[1, :] >= crop_y_start) & (event_list[1, :] < crop_y_end) & 
+                                (event_list[2, :] >= crop_x_start) & (event_list[2, :] < crop_x_end))
                 
-                # Filter events and adjust coordinates
-                filtered_event_list = event_list[:, event_mask]
-                if filtered_event_list.shape[1] > 0:
-                    filtered_event_list[1, :] -= crop_y_start  # Adjust y coordinates
-                    filtered_event_list[2, :] -= crop_x_start  # Adjust x coordinates
+                    # Filter events and adjust coordinates
+                    filtered_event_list = event_list[:, event_mask]
+                    if filtered_event_list.shape[1] > 0:
+                        filtered_event_list[1, :] -= crop_y_start  # Adjust y coordinates
+                        filtered_event_list[2, :] -= crop_x_start  # Adjust x coordinates
                 
-                output["event_list"] = filtered_event_list
-                output["event_list_pol_mask"] = event_list_pol_mask[:, event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
-            else:
-                output["event_list"] = event_list
-                output["event_list_pol_mask"] = event_list_pol_mask
+                    output["event_list"] = filtered_event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask[:, event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
+                else:
+                    output["event_list"] = event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask
             
-            if self.config["data"]["mode"] == "frames":
-                output["frames"] = center_crop(frames)
-            if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-                output["gtflow"] = center_crop(flowmap)
+                if self.config["data"]["mode"] == "frames":
+                    output["frames"] = center_crop(frames)
+                if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
+                    output["gtflow"] = center_crop(flowmap)
             
-            output["dt_gt"] = torch.from_numpy(dt_gt)
-            output["dt_input"] = torch.from_numpy(dt_input)
+                output["dt_gt"] = torch.from_numpy(dt_gt)
+                output["dt_input"] = torch.from_numpy(dt_input)
              
         else:
             # Output unaltered tensors when no cropping is needed
