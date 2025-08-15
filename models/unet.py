@@ -12,10 +12,6 @@ from .submodules import (
     ResidualBlock,
     TransposedConvLayer,
     UpsampleConvLayer,
-    LeakyResidualBlock,
-    LeakyUpsampleConvLayer,
-    LeakyTransposedConvLayer,
-    LeakyRecurrentConvLayer,
 )
 from .spiking_submodules import (
     SpikingRecurrentConvLayer,
@@ -463,17 +459,3 @@ class SpikingMultiResUNetRecurrent(MultiResUNetRecurrent):
             predictions.append(pred(x))
 
         return predictions
-
-
-class LeakyMultiResUNetRecurrent(SpikingMultiResUNetRecurrent):
-    """
-    Leaky recurrent UNet architecture where every encoder is followed by a recurrent convolutional block.
-    Symmetric, skip connections on every encoding layer.
-    Predictions at each decoding layer.
-    Predictions are added as skip connection (concat) to the input of the subsequent layer.
-    """
-
-    res_type = LeakyResidualBlock
-    upsample_type = LeakyUpsampleConvLayer
-    transpose_type = LeakyTransposedConvLayer
-    rec_type = LeakyRecurrentConvLayer

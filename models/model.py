@@ -7,26 +7,19 @@ import torch
 from .base import BaseModel
 from .model_util import copy_states, CropParameters
 from .spiking_submodules import (
-    ConvALIF,
-    ConvALIFRecurrent,
     ConvLIF,
     ConvLIFRecurrent,
-    ConvPLIF,
-    ConvPLIFRecurrent,
-    ConvXLIF,
-    ConvXLIFRecurrent,
 )
 from .SNNtorch_spiking_submodules import (
     SNNtorch_ConvLIF,
     SNNtorch_ConvLIFRecurrent,
 )
-from .submodules import ConvGRU, ConvLayer, ConvLayer_, ConvLeaky, ConvLeakyRecurrent, ConvRecurrent
+from .submodules import ConvGRU, ConvLayer, ConvLayer_, ConvRecurrent
 from .unet import (
     UNetRecurrent,
     MultiResUNet,
     MultiResUNetRecurrent,
     SpikingMultiResUNetRecurrent,
-    LeakyMultiResUNetRecurrent,
 )
 
 

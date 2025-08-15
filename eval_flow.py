@@ -18,12 +18,14 @@ from models.model import (
     FireNet,
     FireNet_short,
     FireFlowNet,
+    EVFlowNet,
 
 )
 from models.model import (
     LIFFireNet,
     LIFFireNet_short,
     LIFFireFlowNet,
+    SpikingRecEVFlowNet,
 )
 from utils.iwe import compute_pol_iwe
 from utils.utils import load_model, create_model_dir
@@ -114,8 +116,13 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch/19/model.pth" # runid: f9c47172b72242198cf80f3887109add
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch/21/model.pth" # runid: b6062d12fd79418cab1af2f40adb0069
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short/37/model.pth" # runid: 46e0c3f20db543b0afbceeac7786291d
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch//model.pth" # runid: cbbdfd39634146b0a1dfe27a847b1673
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch//model.pth" # runid: d743287c54bd426bba33e44893f2d274
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch/30/model.pth" # runid: cbbdfd39634146b0a1dfe27a847b1673
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch/25/model.pth" # runid: d743287c54bd426bba33e44893f2d274
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch//model.pth" # runid: d0510780ea534f239b15bc3054a42d63
+    #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch//model.pth" # runid: 4ea02c571b7847bbacfddb80afc2e29c
+    #model_path_dir = "mlruns/0/models/LIFEVFlowNet_SNNtorch//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32//model.pth" # runid:
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
