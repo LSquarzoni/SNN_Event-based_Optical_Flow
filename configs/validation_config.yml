@@ -1,0 +1,39 @@
+# Validation configuration for MVSEC dataset during training
+data:
+    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+    mode: gtflow_dt1 
+    window: 1  # Small window for validation
+    window_eval: 1
+
+model:
+    mask_output: True  
+
+metrics:
+    name: ["AEE", "AE"]
+    flow_scaling: 128 
+
+loss:
+    flow_regul_weight: 0.001
+    clip_grad: 100.0 # set to Null to disable
+    overwrite_intermediate: False
+
+loader:
+    batch_size: 1  # Keep batch size small for validation to save memory
+    resolution: [128, 128]  
+    std_resolution: [256, 256] 
+    augment: []  # No augmentation during validation
+    augment_prob: []
+    gpu: 2  # Should match your training GPU
+
+vis:
+    verbose: False
+    enabled: False
+    bars: False
+    activity: False
+    store: False
+
+hot_filter:
+    enabled: True
+    max_px: 100
+    min_obvs: 5
+    max_rate: 0.8

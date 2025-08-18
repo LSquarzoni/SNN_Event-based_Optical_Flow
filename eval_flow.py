@@ -111,15 +111,16 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
     
     # SNNtorch LIF implementation
-    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
+    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test//model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch/29/model.pth" # runid: 0e2e489c048e4a9c80553ad7cc84e1c2
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch/19/model.pth" # runid: f9c47172b72242198cf80f3887109add
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch/21/model.pth" # runid: b6062d12fd79418cab1af2f40adb0069
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short/37/model.pth" # runid: 46e0c3f20db543b0afbceeac7786291d
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch/30/model.pth" # runid: cbbdfd39634146b0a1dfe27a847b1673
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch/25/model.pth" # runid: d743287c54bd426bba33e44893f2d274
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch//model.pth" # runid: d0510780ea534f239b15bc3054a42d63
-    #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch//model.pth" # runid: 4ea02c571b7847bbacfddb80afc2e29c
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch/6/model.pth" # runid: d0510780ea534f239b15bc3054a42d63
+    #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch/34/model.pth" # runid: 4ea02c571b7847bbacfddb80afc2e29c
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet_SNNtorch//model.pth" # runid:
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64//model.pth" # runid:
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32//model.pth" # runid:
