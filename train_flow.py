@@ -44,6 +44,10 @@ def create_validation_loader(train_config, validation_config_path):
             "num_bins": train_config["model"]["num_bins"],
             "round_encoding": train_config["model"].get("round_encoding", False)
         }
+        val_config["loader"] = {
+            "resolution": train_config["loader"]["resolution"],
+            "gpu": train_config["loader"]["gpu"]
+        }
         
         # Create validation dataloader with pure validation config
         val_data = H5Loader(val_config, val_config["model"]["num_bins"], val_config["model"]["round_encoding"])
@@ -210,9 +214,9 @@ def train(args, config_parser):
                 
                 # Print epoch summary with both training loss and validation results
                 if validation_enabled and val_results:
-                    print(f"\nEpoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AEE: {val_results.get('AEE', 'N/A'):.4f}, Validation AE: {val_results.get('AE', 'N/A'):.4f}")
+                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AEE: {val_results.get('AEE', 'N/A'):.4f}, Validation AE: {val_results.get('AE', 'N/A'):.4f}")
                 else:
-                    print(f"\nEpoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
+                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
 
                 with torch.no_grad():
                     # Save model based on validation AEE if available, otherwise training loss
