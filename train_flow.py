@@ -44,10 +44,6 @@ def create_validation_loader(train_config, validation_config_path):
             "num_bins": train_config["model"]["num_bins"],
             "round_encoding": train_config["model"].get("round_encoding", False)
         }
-        val_config["loader"] = {
-            "resolution": train_config["loader"]["resolution"],
-            "gpu": train_config["loader"]["gpu"]
-        }
         
         # Create validation dataloader with pure validation config
         val_data = H5Loader(val_config, val_config["model"]["num_bins"], val_config["model"]["round_encoding"])
@@ -224,7 +220,7 @@ def train(args, config_parser):
                     best_metric = best_val_aee if validation_enabled else best_loss
                     
                     if current_metric < best_metric - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_val_test/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_short_4ch_val/")
                         os.makedirs(model_save_path, exist_ok=True)
                         
                         # Save just the state dict instead of the full model

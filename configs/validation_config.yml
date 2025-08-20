@@ -19,9 +19,11 @@ loss:
 
 loader:
     batch_size: 1  # Keep batch size small for validation to save memory
+    resolution: [128, 128] # H x W
     std_resolution: [256, 256] 
     augment: []  # No augmentation during validation
     augment_prob: []
+    gpu: 3
 
 vis:
     verbose: False

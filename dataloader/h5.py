@@ -204,26 +204,37 @@ class H5Loader(BaseDataLoader):
             ts = np.zeros((0))
             ps = np.zeros((0))
             if not restart:
-                idx0, idx1 = self.get_event_index(batch, window=self.config["data"]["window"])
+                # Check if we need spatial filtering for events mode
+                if (self.config["data"]["mode"] == "events" and 
+                    (self.config["loader"]["resolution"][0] < self.config["loader"]["std_resolution"][0] or
+                    self.config["loader"]["resolution"][1] < self.config["loader"]["std_resolution"][1])):
+        
+                    # Use spatially filtered sampling
+                    xs, ys, ts, ps = self.get_events_spatially_filtered(
+                        self.open_files[batch], batch, self.config["data"]["window"]
+                    )
+                else:
+                    # Use original sampling method
+                    idx0, idx1 = self.get_event_index(batch, window=self.config["data"]["window"])
+                    
+                    if (
+                        self.config["data"]["mode"] == "frames"
+                        or self.config["data"]["mode"] == "gtflow_dt1"
+                        or self.config["data"]["mode"] == "gtflow_dt4"
+                    ) and self.config["data"]["window"] < 1.0:
+                        floor_row = int(np.floor(self.batch_row[batch]))
+                        ceil_row = int(np.ceil(self.batch_row[batch] + self.config["data"]["window"]))
+                        if ceil_row - floor_row > 1:
+                            floor_row += ceil_row - floor_row - 1
 
-                if (
-                    self.config["data"]["mode"] == "frames"
-                    or self.config["data"]["mode"] == "gtflow_dt1"
-                    or self.config["data"]["mode"] == "gtflow_dt4"
-                ) and self.config["data"]["window"] < 1.0:
-                    floor_row = int(np.floor(self.batch_row[batch]))
-                    ceil_row = int(np.ceil(self.batch_row[batch] + self.config["data"]["window"]))
-                    if ceil_row - floor_row > 1:
-                        floor_row += ceil_row - floor_row - 1
+                        idx0_change = self.batch_row[batch] - floor_row
+                        idx1_change = self.batch_row[batch] + self.config["data"]["window"] - floor_row
 
-                    idx0_change = self.batch_row[batch] - floor_row
-                    idx1_change = self.batch_row[batch] + self.config["data"]["window"] - floor_row
-
-                    delta_idx = idx1 - idx0
-                    idx1 = int(idx0 + idx1_change * delta_idx)
-                    idx0 = int(idx0 + idx0_change * delta_idx)
-
-                xs, ys, ts, ps = self.get_events(self.open_files[batch], idx0, idx1)
+                        delta_idx = idx1 - idx0
+                        idx1 = int(idx0 + idx1_change * delta_idx)
+                        idx0 = int(idx0 + idx0_change * delta_idx)
+                    
+                    xs, ys, ts, ps = self.get_events(self.open_files[batch], idx0, idx1)
 
             # trigger sequence change
             if (self.config["data"]["mode"] == "events" and xs.shape[0] < self.config["data"]["window"]) or (
@@ -289,6 +300,10 @@ class H5Loader(BaseDataLoader):
                 else:
                     sample_flow = self.open_files[batch]["flow_dt4"][self.open_files_flowmaps[batch].names[0]][:]
                 original_height, original_width = sample_flow.shape[:2]
+            elif (self.config["data"]["mode"] == "events" and 
+                (self.config["loader"]["resolution"][0] < self.config["loader"]["std_resolution"][0] or
+                self.config["loader"]["resolution"][1] < self.config["loader"]["std_resolution"][1])):
+                original_height, original_width = self.config["loader"]["resolution"]
             else:
                 # For events mode, use std_resolution as the original size
                 original_height, original_width = self.config["loader"]["std_resolution"]
@@ -350,9 +365,10 @@ class H5Loader(BaseDataLoader):
         # prepare output
         output = {}
 
-        # Check if cropping is needed (when target size is smaller than original size)
+        # Check if cropping is needed (when target size is smaller than original size), only for evaluation
         if (original_height is not None and original_width is not None and 
-            (target_height < original_height or target_width < original_width)):
+            (target_height < original_height or target_width < original_width) 
+            and self.config["data"]["mode"] != "events"):
             # Initialize center crop transform
             center_crop = transforms.CenterCrop((target_height, target_width))
             
@@ -410,3 +426,88 @@ class H5Loader(BaseDataLoader):
             output["dt_input"] = torch.from_numpy(dt_input)
 
         return output
+    
+    def get_events_spatially_filtered(self, file, batch, target_num_events):
+        """
+        Get exactly target_num_events events that fall within the cropping window.
+        This may require reading more events than target_num_events to find enough valid ones.
+        """
+        # Calculate crop boundaries
+        std_height, std_width = self.config["loader"]["std_resolution"]
+        target_height, target_width = self.config["loader"]["resolution"]
+        
+        crop_y_start = (std_height - target_height) // 2
+        crop_y_end = crop_y_start + target_height
+        crop_x_start = (std_width - target_width) // 2
+        crop_x_end = crop_x_start + target_width
+        
+        # Start from current position
+        current_idx = self.batch_row[batch]
+        collected_events = 0
+        chunk_size = target_num_events * 2  # Start with 2x to increase chance of finding enough
+        
+        xs_filtered = []
+        ys_filtered = []
+        ts_filtered = []
+        ps_filtered = []
+        
+        max_search_events = target_num_events * 10  # Safety limit to avoid infinite loops
+        searched_events = 0
+        
+        while collected_events < target_num_events and searched_events < max_search_events:
+            # Read a chunk of events
+            end_idx = min(current_idx + chunk_size, len(file["events/xs"]))
+            
+            if current_idx >= end_idx:
+                # Reached end of file
+                break
+                
+            xs_chunk = file["events/xs"][current_idx:end_idx]
+            ys_chunk = file["events/ys"][current_idx:end_idx]
+            ts_chunk = file["events/ts"][current_idx:end_idx]
+            ps_chunk = file["events/ps"][current_idx:end_idx]
+            
+            # Filter events within crop region
+            if len(xs_chunk) > 0:
+                spatial_mask = ((ys_chunk >= crop_y_start) & (ys_chunk < crop_y_end) & 
+                               (xs_chunk >= crop_x_start) & (xs_chunk < crop_x_end))
+                
+                valid_events = np.sum(spatial_mask)
+                events_needed = target_num_events - collected_events
+                events_to_take = min(valid_events, events_needed)
+                
+                if events_to_take > 0:
+                    # Take only the events we need
+                    valid_indices = np.where(spatial_mask)[0][:events_to_take]
+                    
+                    xs_filtered.extend(xs_chunk[valid_indices])
+                    ys_filtered.extend(ys_chunk[valid_indices])
+                    ts_filtered.extend(ts_chunk[valid_indices])
+                    ps_filtered.extend(ps_chunk[valid_indices])
+                    
+                    collected_events += events_to_take
+            
+            current_idx = end_idx
+            searched_events += chunk_size
+            
+            # Increase chunk size if we're not finding enough events
+            if collected_events < target_num_events * 0.5:
+                chunk_size = min(chunk_size * 2, target_num_events * 5)
+        
+        # Convert to numpy arrays
+        xs = np.array(xs_filtered)
+        ys = np.array(ys_filtered) 
+        ts = np.array(ts_filtered)
+        ps = np.array(ps_filtered)
+        
+        # Adjust coordinates to new coordinate system
+        if len(xs) > 0:
+            ys = ys - crop_y_start
+            xs = xs - crop_x_start
+            ts = ts - file.attrs["t0"]  # sequence starting at t0 = 0
+            self.last_proc_timestamp = ts[-1] if len(ts) > 0 else self.last_proc_timestamp
+            
+            # Update batch_row to where we stopped searching
+            self.batch_row[batch] = current_idx
+    
+        return xs, ys, ts, ps
