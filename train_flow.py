@@ -47,14 +47,14 @@ def create_validation_loader(train_config, validation_config_path):
         
         # Create validation dataloader with pure validation config
         val_data = H5Loader(val_config, val_config["model"]["num_bins"], val_config["model"]["round_encoding"])
-        """ val_dataloader = torch.utils.data.DataLoader(
+        val_dataloader = torch.utils.data.DataLoader(
             val_data,
             drop_last=True,
             batch_size=val_config["loader"]["batch_size"],
             collate_fn=val_data.custom_collate,
             shuffle=False,
             **val_config_parser.loader_kwargs,
-        ) """
+        )
         
         # Create validation metrics
         val_metrics = {
