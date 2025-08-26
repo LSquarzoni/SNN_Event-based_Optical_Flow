@@ -507,6 +507,19 @@ class H5Loader(BaseDataLoader):
             ts = ts - file.attrs["t0"]  # sequence starting at t0 = 0
             self.last_proc_timestamp = ts[-1] if len(ts) > 0 else self.last_proc_timestamp
             
+            # Additional bounds checking to ensure all coordinates are within target resolution
+            # This prevents CUDA scatter errors from out-of-bounds indices
+            target_height, target_width = self.config["loader"]["resolution"]
+            valid_bounds_mask = ((ys >= 0) & (ys < target_height) & 
+                                (xs >= 0) & (xs < target_width))
+            
+            if not np.all(valid_bounds_mask):
+                # Filter out any events that are still out of bounds
+                xs = xs[valid_bounds_mask]
+                ys = ys[valid_bounds_mask] 
+                ts = ts[valid_bounds_mask]
+                ps = ps[valid_bounds_mask]
+            
             # Update batch_row to where we stopped searching
             self.batch_row[batch] = current_idx
     

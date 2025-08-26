@@ -131,9 +131,9 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch_val/10/model.pth" # runid: 3c93bf4c5a984a6f898d196274eac2d5
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch_val/8/model.pth" # runid: 08a62701f3294bdfa9920dcdd2f3cbca
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch_val/8/model.pth" # runid: 592b1cc87676495a8b013b270c867b10
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64_val//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32_val//model.pth" # runid:
-    model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth" # runid: 6ed87a492f984c9fb835ab25d740b30f
+    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64_val/8/model.pth" # runid: d086c4dc395c4bf4879fb1dbbfc553e5
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32_val/9/model.pth" # runid: 41d3fcf3220f4149ac8009da0490b4cd
+    #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth" # runid: 6ed87a492f984c9fb835ab25d740b30f
     
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
