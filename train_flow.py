@@ -220,7 +220,7 @@ def train(args, config_parser):
                     best_metric = best_val_aee if validation_enabled else best_loss
                     
                     if current_metric < best_metric - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireFlowNet_SNNtorch_val/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireFlowNet_SNNtorch_64x64_val/")
                         os.makedirs(model_save_path, exist_ok=True)
                         
                         # Save just the state dict instead of the full model
