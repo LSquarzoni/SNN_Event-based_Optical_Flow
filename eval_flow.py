@@ -121,9 +121,10 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch/6/model.pth" # runid: d0510780ea534f239b15bc3054a42d63
     #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch/34/model.pth" # runid: 4ea02c571b7847bbacfddb80afc2e29c
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet_SNNtorch//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64//model.pth" # runid: 55d166ec1f2c42d2b942eb059afa4bf3
     
     # Validation dataset introduced
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test/10/model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
+    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test/10/model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch_val/8/model.pth" # runid: 4f0442fb00b849cfbe9964d2d5e6cc73
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch_val/6/model.pth" # runid: e245cae664994400a3cdf5c2d9d293e9
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch_val/6/model.pth" # runid: efabb5994ea547318713938f23ffaeb0
@@ -131,7 +132,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch_val/10/model.pth" # runid: 3c93bf4c5a984a6f898d196274eac2d5
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch_val/8/model.pth" # runid: 08a62701f3294bdfa9920dcdd2f3cbca
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch_val/8/model.pth" # runid: 592b1cc87676495a8b013b270c867b10
-    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64_val/8/model.pth" # runid: d086c4dc395c4bf4879fb1dbbfc553e5
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64_val/8/model.pth" # runid: d086c4dc395c4bf4879fb1dbbfc553e5
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32_val/9/model.pth" # runid: 41d3fcf3220f4149ac8009da0490b4cd
     #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth" # runid: 6ed87a492f984c9fb835ab25d740b30f
     

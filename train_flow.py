@@ -47,14 +47,14 @@ def create_validation_loader(train_config, validation_config_path):
         
         # Create validation dataloader with pure validation config
         val_data = H5Loader(val_config, val_config["model"]["num_bins"], val_config["model"]["round_encoding"])
-        val_dataloader = torch.utils.data.DataLoader(
+        """ val_dataloader = torch.utils.data.DataLoader(
             val_data,
             drop_last=True,
             batch_size=val_config["loader"]["batch_size"],
             collate_fn=val_data.custom_collate,
             shuffle=False,
             **val_config_parser.loader_kwargs,
-        )
+        ) """
         
         # Create validation metrics
         val_metrics = {
@@ -220,7 +220,7 @@ def train(args, config_parser):
                     best_metric = best_val_aee if validation_enabled else best_loss
                     
                     if current_metric < best_metric - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireFlowNet_SNNtorch_32x32_val/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_/")
                         os.makedirs(model_save_path, exist_ok=True)
                         
                         # Save just the state dict instead of the full model
