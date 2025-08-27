@@ -368,7 +368,7 @@ class H5Loader(BaseDataLoader):
         # Check if cropping is needed (when target size is smaller than original size), only for evaluation
         if (original_height is not None and original_width is not None and 
             (target_height < original_height or target_width < original_width) 
-            and self.config["data"]["mode"] != "events"):
+            and self.config["data"]["mode"] != "events" and not self.config["loader"]["output_crop"]):
             # Initialize center crop transform
             center_crop = transforms.CenterCrop((target_height, target_width))
             
@@ -408,7 +408,27 @@ class H5Loader(BaseDataLoader):
             
             output["dt_gt"] = torch.from_numpy(dt_gt)
             output["dt_input"] = torch.from_numpy(dt_input)
-             
+        
+        elif (original_height is not None and original_width is not None and 
+            (target_height < original_height or target_width < original_width) 
+            and self.config["data"]["mode"] != "events" and self.config["loader"]["output_crop"]):
+            # Initialize center crop transform
+            center_crop = transforms.CenterCrop((target_height, target_width))
+            
+            # Output only cropped ground truth, since the cropping of the flow will be carried out after inference
+            output["event_cnt"] = event_cnt
+            output["event_voxel"] = event_voxel
+            output["event_mask"] = event_mask
+            output["event_list"] = event_list
+            output["event_list_pol_mask"] = event_list_pol_mask
+            
+            if self.config["data"]["mode"] == "frames":
+                output["frames"] = center_crop(frames)
+            if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
+                output["gtflow"] = center_crop(flowmap)
+            
+            output["dt_gt"] = torch.from_numpy(dt_gt)
+            output["dt_input"] = torch.from_numpy(dt_input)
         else:
             # Output unaltered tensors when no cropping is needed
             output["event_cnt"] = event_cnt

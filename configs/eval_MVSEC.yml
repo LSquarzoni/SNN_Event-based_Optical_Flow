@@ -21,6 +21,7 @@ loader:
     std_resolution: [256, 256]
     augment: []
     gpu: 1
+    output_crop: True
 
 vis:
     enabled: False

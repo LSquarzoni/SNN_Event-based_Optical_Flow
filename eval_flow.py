@@ -8,6 +8,7 @@ from torchinfo import summary
 
 from brevitas.graph.calibrate import calibration_mode
 from brevitas import config as cf
+import torchvision.transforms as transforms
 
 cf.IGNORE_MISSING_KEYS = True
 
@@ -121,7 +122,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch/6/model.pth" # runid: d0510780ea534f239b15bc3054a42d63
     #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch/34/model.pth" # runid: 4ea02c571b7847bbacfddb80afc2e29c
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet_SNNtorch//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64//model.pth" # runid: 55d166ec1f2c42d2b942eb059afa4bf3
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64/19/model.pth" # runid: 55d166ec1f2c42d2b942eb059afa4bf3
     
     # Validation dataset introduced
     model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test/10/model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
@@ -174,6 +175,11 @@ def test(args, config_parser):
             **kwargs,
         )
 
+    # Initialize center crop transform if needed
+    center_crop = None
+    if config["loader"]["output_crop"]:
+        center_crop = transforms.CenterCrop((config["loader"]["resolution"][0], config["loader"]["resolution"][1]))
+
     # inference loop
     idx_AEE = 0
     val_results = {}
@@ -203,12 +209,17 @@ def test(args, config_parser):
                 flow_vis = x["flow"][-1].clone()
                 if model.mask:
                     flow_vis *= inputs["event_mask"].to(device)
+                    
+                if config["loader"]["output_crop"]:
+                    resolution = config["loader"]["std_resolution"]
+                else:
+                    resolution = config["loader"]["resolution"]
 
                 # image of warped events
                 iwe = compute_pol_iwe(
                     x["flow"][-1],
                     inputs["event_list"].to(device),
-                    config["loader"]["resolution"],
+                    resolution,
                     inputs["event_list_pol_mask"][:, :, 0:1].to(device),
                     inputs["event_list_pol_mask"][:, :, 1:2].to(device),
                     flow_scaling=config["metrics"]["flow_scaling"],
@@ -219,10 +230,108 @@ def test(args, config_parser):
                 events_window_vis = None
                 masked_window_flow_vis = None
                 if "metrics" in config.keys():
-
+                    if config["loader"]["output_crop"]:
+                        # Cropping the output of the model
+                        x["flow"] = [center_crop(flow).contiguous() for flow in x["flow"]]
+                        
+                        # Create filtered inputs for metric computation
+                        inputs_filtered = {}
+                        for key, value in inputs.items():
+                            inputs_filtered[key] = value
+                        
+                        # Apply center crop to ground truth flow if it exists
+                        if "gtflow" in inputs and inputs["gtflow"].numel() > 0:
+                            inputs_filtered["gtflow"] = center_crop(inputs["gtflow"]).contiguous()
+                        
+                        # Apply center crop to other resolution-dependent tensors
+                        for tensor_key in ["event_voxel", "event_cnt", "event_mask"]:
+                            if tensor_key in inputs and inputs[tensor_key].numel() > 0:
+                                inputs_filtered[tensor_key] = center_crop(inputs[tensor_key]).contiguous()
+                        
+                        # Filter event_list based on crop boundaries if output_crop is enabled
+                        if inputs["event_list"].numel() > 0:
+                            crop_y_start = (config["loader"]["std_resolution"][0] - config["loader"]["resolution"][0]) // 2
+                            crop_y_end = crop_y_start + config["loader"]["resolution"][0]
+                            crop_x_start = (config["loader"]["std_resolution"][1] - config["loader"]["resolution"][1]) // 2
+                            crop_x_end = crop_x_start + config["loader"]["resolution"][1]
+                            
+                            # Handle event_list shape: [batch, N_events, 4] where last dim is [ts, y, x, p]
+                            event_list = inputs["event_list"]
+                            batch_size = event_list.shape[0]
+                            
+                            filtered_events = []
+                            for b in range(batch_size):
+                                batch_events = event_list[b, :, :]  # [N_events, 4]
+                                
+                                if batch_events.shape[0] > 0:
+                                    # Create mask for events within crop region (y, x are at indices 1, 2)
+                                    event_mask = ((batch_events[:, 1] >= crop_y_start) & (batch_events[:, 1] < crop_y_end) & 
+                                                (batch_events[:, 2] >= crop_x_start) & (batch_events[:, 2] < crop_x_end))
+                                    
+                                    # Filter events and adjust coordinates
+                                    filtered_batch = batch_events[event_mask].clone()
+                                    if filtered_batch.shape[0] > 0:
+                                        filtered_batch[:, 1] -= crop_y_start  # Adjust y coordinates
+                                        filtered_batch[:, 2] -= crop_x_start  # Adjust x coordinates
+                                    
+                                    filtered_events.append(filtered_batch)
+                                else:
+                                    # Empty batch
+                                    filtered_events.append(torch.zeros(0, 4, device=batch_events.device, dtype=batch_events.dtype))
+                            
+                            # Reconstruct the tensor - pad to same length and stack
+                            if len(filtered_events) > 0:
+                                max_events = max(fe.shape[0] for fe in filtered_events) if any(fe.shape[0] > 0 for fe in filtered_events) else 0
+                                
+                                if max_events > 0:
+                                    padded_events = []
+                                    for fe in filtered_events:
+                                        if fe.shape[0] < max_events:
+                                            padding = torch.zeros(max_events - fe.shape[0], 4, device=fe.device, dtype=fe.dtype)
+                                            fe = torch.cat([fe, padding], dim=0)
+                                        padded_events.append(fe.unsqueeze(0))  # Add batch dimension back
+                                    inputs_filtered["event_list"] = torch.cat(padded_events, dim=0)
+                                else:
+                                    # No events after filtering
+                                    inputs_filtered["event_list"] = torch.zeros(batch_size, 0, 4, device=event_list.device, dtype=event_list.dtype)
+                            else:
+                                inputs_filtered["event_list"] = torch.zeros_like(event_list)
+                            
+                            # Also filter polarity mask if it exists
+                            if inputs["event_list_pol_mask"].numel() > 0:
+                                pol_mask = inputs["event_list_pol_mask"]
+                                # Apply the same filtering to polarity mask - needs to handle same shape as event_list
+                                filtered_pol_masks = []
+                                for b in range(batch_size):
+                                    batch_events = event_list[b, :, :]  # [N_events, 4]
+                                    batch_pol_mask = pol_mask[b, :, :] if pol_mask.shape[0] > 1 else pol_mask[0, :, :]  # [N_events, 2]
+                                    
+                                    if batch_events.shape[0] > 0:
+                                        event_mask = ((batch_events[:, 1] >= crop_y_start) & (batch_events[:, 1] < crop_y_end) & 
+                                                    (batch_events[:, 2] >= crop_x_start) & (batch_events[:, 2] < crop_x_end))
+                                        filtered_pol_batch = batch_pol_mask[event_mask].clone()
+                                        filtered_pol_masks.append(filtered_pol_batch)
+                                    else:
+                                        filtered_pol_masks.append(torch.zeros(0, batch_pol_mask.shape[1], device=batch_pol_mask.device, dtype=batch_pol_mask.dtype))
+                                
+                                # Reconstruct polarity mask with same padding as event_list
+                                if max_events > 0:
+                                    padded_pol_masks = []
+                                    for fpm in filtered_pol_masks:
+                                        if fpm.shape[0] < max_events:
+                                            padding = torch.zeros(max_events - fpm.shape[0], fpm.shape[1], device=fpm.device, dtype=fpm.dtype)
+                                            fpm = torch.cat([fpm, padding], dim=0)
+                                        padded_pol_masks.append(fpm.unsqueeze(0))
+                                    inputs_filtered["event_list_pol_mask"] = torch.cat(padded_pol_masks, dim=0)
+                                else:
+                                    inputs_filtered["event_list_pol_mask"] = torch.zeros(batch_size, 0, pol_mask.shape[2], device=pol_mask.device, dtype=pol_mask.dtype)
+                        
                     # event flow association
                     for metric in criteria:
-                        metric.event_flow_association(x["flow"], inputs)
+                        if config["loader"]["output_crop"]:
+                            metric.event_flow_association(x["flow"], inputs_filtered)
+                        else:
+                            metric.event_flow_association(x["flow"], inputs)
 
                     # validation
                     for i, metric in enumerate(config["metrics"]["name"]):
