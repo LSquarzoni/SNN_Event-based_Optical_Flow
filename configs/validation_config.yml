@@ -1,6 +1,6 @@
 # Validation configuration for MVSEC dataset during training
 data:
-    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/ 
     mode: gtflow_dt1 
     window: 1  # Small window for validation
     window_eval: 1

@@ -112,7 +112,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
     
     # SNNtorch LIF implementation
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
+    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch/29/model.pth" # runid: 0e2e489c048e4a9c80553ad7cc84e1c2
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch/19/model.pth" # runid: f9c47172b72242198cf80f3887109add
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch/21/model.pth" # runid: b6062d12fd79418cab1af2f40adb0069
@@ -124,8 +124,8 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFEVFlowNet_SNNtorch//model.pth" # runid:
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64/19/model.pth" # runid: 55d166ec1f2c42d2b942eb059afa4bf3
     
-    # Validation dataset introduced
-    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test/10/model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
+    # Validation dataset introduced (MVSEC)
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test/10/model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch_val/8/model.pth" # runid: 4f0442fb00b849cfbe9964d2d5e6cc73
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch_val/6/model.pth" # runid: e245cae664994400a3cdf5c2d9d293e9
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch_val/6/model.pth" # runid: efabb5994ea547318713938f23ffaeb0
@@ -137,6 +137,8 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32_val/9/model.pth" # runid: 41d3fcf3220f4149ac8009da0490b4cd
     #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth" # runid: 6ed87a492f984c9fb835ab25d740b30f
     
+    # 10% validation from training dataset
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
