@@ -2,7 +2,7 @@
 data:
     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/ 
     mode: gtflow_dt1 
-    window: 1  # Small window for validation
+    window: 10 # Higher than evaluation to make the result less noisy during validation  
     window_eval: 1
 
 model:

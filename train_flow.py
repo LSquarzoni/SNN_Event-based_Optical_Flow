@@ -215,15 +215,20 @@ def train(args, config_parser):
                     print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
 
                 with torch.no_grad():
-                    # Save model based on validation AEE if available, otherwise training loss
-                    current_metric = val_results.get('AEE', avg_train_loss) if validation_enabled else avg_train_loss
-                    best_metric = best_val_aee if validation_enabled else best_loss
-                    
-                    if current_metric < best_metric - 1e-6:  # small delta to prevent stopping on tiny changes
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_/")
+                    # Use combined metric for model selection if validation is enabled
+                    if validation_enabled and val_results:
+                        # Weighted sum (equal weights here, adjust as needed)
+                        current_metric = 0.5 * val_results.get('AEE', avg_train_loss) + 0.5 * val_results.get('AE', avg_train_loss)
+                        best_metric = 0.5 * best_val_aee + 0.5 * best_val_ae if ('best_val_ae' in locals()) else float('inf')
+                    else:
+                        current_metric = avg_train_loss
+                        best_metric = best_loss
+
+                    # Save model if combined metric improves
+                    if current_metric < best_metric - 1e-6:
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_ValTest2/")
                         os.makedirs(model_save_path, exist_ok=True)
-                        
-                        # Save just the state dict instead of the full model
+
                         save_data = {
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
@@ -231,18 +236,15 @@ def train(args, config_parser):
                             'loss': avg_train_loss,
                             'config': config
                         }
-                        
-                        # Add validation results to saved data
                         if validation_enabled:
                             save_data['validation_results'] = val_results
-                            
+
                         torch.save(save_data, os.path.join(model_save_path, 'model.pth'))
-                        
-                        # Also log with MLflow but without autolog to avoid duplication
                         mlflow.log_artifact(os.path.join(model_save_path, 'model.pth'))
-                        
-                        if validation_enabled:
-                            best_val_aee = current_metric
+
+                        if validation_enabled and val_results:
+                            best_val_aee = val_results.get('AEE', best_val_aee)
+                            best_val_ae = val_results.get('AE', float('inf'))
                         else:
                             best_loss = current_metric
                         epochs_without_improvement = 0

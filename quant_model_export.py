@@ -10,7 +10,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from models.model import LIFFireNet
+from models.model import LIFFireNet, LIFFireFlowNet
 from utils.utils import load_model
 
 
@@ -59,7 +59,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
     # Load model weights
-    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth"      #------------------------------------------------------------------------------
+    model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth"      #------------------------------------------------------------------------------
     model = load_model(args.runid, model, device, model_path_dir)
     model.eval()
     
