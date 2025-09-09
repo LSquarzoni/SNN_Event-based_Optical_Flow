@@ -5,6 +5,7 @@ import mlflow
 from brevitas import config as cf
 from brevitas.export import export_onnx_qcdq
 from brevitas.graph.calibrate import calibration_mode
+from onnxsim import simplify
 
 cf.IGNORE_MISSING_KEYS = True
 
@@ -59,7 +60,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
     # Load model weights
-    model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth"      #------------------------------------------------------------------------------
+    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: 9e417b9cd41d436c9a047c39d9cf2e30
     model = load_model(args.runid, model, device, model_path_dir)
     model.eval()
     
@@ -98,6 +99,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             
             # Export paths
             onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}.onnx"
+            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler.onnx"
             
             print(f"Exporting model to: {onnx_file_path}")
             print(f"Input shapes - event_voxel: {event_voxel.shape}, event_cnt: {event_cnt.shape}")
@@ -117,6 +119,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     opset_version=13,  # Use higher opset for quantization
                 )
             else:
+                
                 # Standard FP32 export
                 print("Exporting FP32 model...")
                 torch.onnx.export(
@@ -140,6 +143,11 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             onnx.checker.check_model(onnx_model)
             print(f"ONNX model exported successfully and verified!")
             
+            simpler_model, check = simplify(onnx_model)
+            if check:
+                onnx.save(simpler_model, onnx_simpler_file_path)
+                print("Simplified ONNX model saved successfully!")
+            
             # Print model info
             print(f"Model size: {len(onnx_model.SerializeToString()) / 1024 / 1024:.2f} MB")
             
@@ -162,7 +170,7 @@ if __name__ == "__main__":
     parser.add_argument("runid", help="mlflow run")
     parser.add_argument(
         "--config",
-        default="configs/eval_flow.yml",
+        default="configs/eval_MVSEC.yml",
         help="config file, overwrites mlflow settings",
     )
     parser.add_argument(

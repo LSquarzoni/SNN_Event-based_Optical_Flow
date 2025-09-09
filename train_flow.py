@@ -157,7 +157,8 @@ def train(args, config_parser):
     )
 
     # Create validation dataloader
-    val_dataloader, val_data, val_metrics, val_config = create_validation_loader(config, args.val_config)
+    # val_dataloader, val_data, val_metrics, val_config = create_validation_loader(config, args.val_config)
+    val_dataloader = None
     validation_enabled = val_dataloader is not None
 
     # loss function
@@ -226,7 +227,7 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFireNet_SNNtorch_ValTest2/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN/")
                         os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {

@@ -112,7 +112,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
     
     # SNNtorch LIF implementation
-    model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
+    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch/29/model.pth" # runid: 0e2e489c048e4a9c80553ad7cc84e1c2
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch/19/model.pth" # runid: f9c47172b72242198cf80f3887109add
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch/21/model.pth" # runid: b6062d12fd79418cab1af2f40adb0069
@@ -139,6 +139,11 @@ def test(args, config_parser):
     
     # 10% validation from training dataset
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
+    
+    # FINAL MODELS: simplification of the LIF code
+    model_path_dir = "mlruns/0/models/LIFFN//model.pth" # runid: 151279f26b33483d8028f59dcea59603
+    #model_path_dir = "mlruns/0/models/LIFFN_16ch//model.pth" # runid: 
+    #model_path_dir = "mlruns/0/models/LIFFN_8ch//model.pth" # runid: 
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
