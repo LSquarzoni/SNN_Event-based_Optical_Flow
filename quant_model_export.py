@@ -60,7 +60,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
     # Load model weights
-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: 9e417b9cd41d436c9a047c39d9cf2e30
+    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
     model = load_model(args.runid, model, device, model_path_dir)
     model.eval()
     

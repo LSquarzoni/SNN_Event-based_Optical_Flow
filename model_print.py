@@ -78,7 +78,7 @@ if __name__ == "__main__":
     parser.add_argument("runid", help="mlflow run")
     parser.add_argument(
         "--config",
-        default="configs/eval_flow.yml",
+        default="configs/eval_MVSEC.yml",
         help="config file, overwrites mlflow settings",
     )
     parser.add_argument(

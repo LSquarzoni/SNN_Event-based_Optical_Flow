@@ -227,7 +227,7 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_short/")
                         os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {
@@ -339,7 +339,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="configs/train_flow.yml",
+        default="configs/train_SNN.yml",
         help="training configuration",
     )
     parser.add_argument(
