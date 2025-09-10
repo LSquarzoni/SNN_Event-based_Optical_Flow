@@ -443,6 +443,20 @@ class FireFlowNet(FireNet):
     rec_neuron = ConvLayer_
     residual = False
     w_scale_pred = 0.01
+    
+    
+class FireFlowNet_short(FireNet_short):
+    """
+    EV-FireFlowNet architecture, as described in the paper "Back to Event Basics: Self
+    Supervised Learning of Image Reconstruction from Event Data via Photometric Constancy",
+    Paredes-Valles et al., CVPR 2021.
+    """
+
+    head_neuron = ConvLayer_
+    ff_neuron = ConvLayer_
+    rec_neuron = ConvLayer_
+    residual = False
+    w_scale_pred = 0.01
 
 
 class RecEVFlowNet(BaseModel):
@@ -619,6 +633,18 @@ class LIFFireNet_short(FireNet_short):
 
 
 class LIFFireFlowNet(FireNet):
+    """
+    Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
+    """
+
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
+    residual = False
+    w_scale_pred = 0.01
+    
+    
+class LIFFireFlowNet_short(FireNet_short):
     """
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """

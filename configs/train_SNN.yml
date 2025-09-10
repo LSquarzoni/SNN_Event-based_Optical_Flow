@@ -11,6 +11,7 @@ model:
     #name: LIFFireNet # for other models available, see models/model.py
     name: LIFFireNet_short # shorter model with 6 layers instead of 8
     #name: LIFFireFlowNet # no recurrent model
+    #name: LIFFireFlowNet_short # no recurrent model with only 6 layers
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
