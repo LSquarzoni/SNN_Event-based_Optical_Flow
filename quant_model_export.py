@@ -14,7 +14,6 @@ from dataloader.h5 import H5Loader
 from models.model import LIFFireNet, LIFFireFlowNet
 from utils.utils import load_model
 
-
 def calibrate_model(calibration_loader, quant_model, device, num_batches=50):
     """Calibrate the quantized model"""
     quant_model = quant_model.to(device)
@@ -36,7 +35,7 @@ def calibrate_model(calibration_loader, quant_model, device, num_batches=50):
     return quant_model
 
 
-def export_to_onnx(args, config_parser, export_quantized=False):
+def export_to_onnx(args, config_parser, export_quantized=False):    
     mlflow.set_tracking_uri(args.path_mlflow)
     
     run = mlflow.get_run(args.runid)

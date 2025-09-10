@@ -12,12 +12,6 @@ from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
 
-class Leaky_forONNX(snn.Leaky):
-    """
-    A subclass of snn.Leaky compatible to ONNX export.
-    """
-    
-
 class SNNtorch_ConvLIF(nn.Module):
     """
     Convolutional spiking LIF cell using SNNTorch Leaky neuron.
