@@ -14,7 +14,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import FWL, RSAT, AEE, NEE, AE
+from loss.flow import AEE, NEE, AE
 from models.model import (
     FireNet,
     FireNet_short,
