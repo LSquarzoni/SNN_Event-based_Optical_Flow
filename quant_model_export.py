@@ -6,6 +6,7 @@ from brevitas import config as cf
 from brevitas.export import export_onnx_qcdq
 from brevitas.graph.calibrate import calibration_mode
 from onnxsim import simplify
+import numpy as np
 
 cf.IGNORE_MISSING_KEYS = True
 
@@ -37,14 +38,18 @@ def calibrate_model(calibration_loader, quant_model, device, num_batches=50):
 
 def export_to_onnx(args, config_parser, export_quantized=False):    
     mlflow.set_tracking_uri(args.path_mlflow)
-    
-    run = mlflow.get_run(args.runid)
-    config = config_parser.merge_configs(run.data.params)
-    
+
+    # If runid is 'dummy', skip MLflow and use config as-is
+    if args.runid == "dummy":
+        config = config_parser.config
+    else:
+        run = mlflow.get_run(args.runid)
+        config = config_parser.merge_configs(run.data.params)
+
     # Initialize settings
     device = config_parser.device
     kwargs = config_parser.loader_kwargs
-    
+
     # Model initialization
     if export_quantized:
         # Enable quantization for quantized export
@@ -55,12 +60,15 @@ def export_to_onnx(args, config_parser, export_quantized=False):
         # Disable quantization for FP32 export
         config["model"]["quantization"]["enabled"] = False
         model_suffix = "_fp32"
-    
+
     model = eval(config["model"]["name"])(config["model"]).to(device)
-    
-    # Load model weights
-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
-    model = load_model(args.runid, model, device, model_path_dir)
+
+    # Only load weights if not dummy
+    if args.runid != "dummy":
+        model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+        model = load_model(args.runid, model, device, model_path_dir)
+        pass
+
     model.eval()
     
     # Data loader
@@ -95,17 +103,28 @@ def export_to_onnx(args, config_parser, export_quantized=False):
         for inputs in dataloader:
             event_voxel = inputs["event_voxel"].to(device)
             event_cnt = inputs["event_cnt"].to(device)
-            
+
+            # Save example input for Deeploy
+            np.savez('exported_models/inputs.npz',
+                     #event_voxel=event_voxel.cpu().numpy(),
+                     event_cnt=event_cnt.cpu().numpy())
+
+            # Run model to get output
+            model.reset_states()
+            x = model(event_voxel, event_cnt)
+            flow = x["flow"][0].cpu().numpy()
+            np.savez('exported_models/outputs.npz', flow=flow)
+
             # Export paths
-            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}.onnx"
-            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler.onnx"
-            
+            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_TEST.onnx"
+            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler_TEST.onnx"
+
             print(f"Exporting model to: {onnx_file_path}")
             print(f"Input shapes - event_voxel: {event_voxel.shape}, event_cnt: {event_cnt.shape}")
-            
-            # Reset model states before export
+
+            # Reset model states before export (again, for ONNX)
             model.reset_states()
-            
+
             if export_quantized:
                 # Export quantized model using Brevitas
                 print("Exporting quantized model...")
@@ -118,7 +137,6 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     opset_version=13,  # Use higher opset for quantization
                 )
             else:
-                
                 # Standard FP32 export
                 print("Exporting FP32 model...")
                 torch.onnx.export(
@@ -136,20 +154,20 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                         'flow': {0: 'batch_size'}
                     }
                 )
-            
+
             # Verify the exported model
             onnx_model = onnx.load(onnx_file_path)
             onnx.checker.check_model(onnx_model)
             print(f"ONNX model exported successfully and verified!")
-            
+
             simpler_model, check = simplify(onnx_model)
             if check:
                 onnx.save(simpler_model, onnx_simpler_file_path)
                 print("Simplified ONNX model saved successfully!")
-            
+
             # Print model info
             print(f"Model size: {len(onnx_model.SerializeToString()) / 1024 / 1024:.2f} MB")
-            
+
             break
     
     mlflow.end_run()

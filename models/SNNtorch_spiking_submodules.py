@@ -12,6 +12,41 @@ from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
 
+# Dummy ReLU-based modules for ONNX export
+import torch.nn as nn
+
+class SNNtorch_ConvReLU(nn.Module):
+    """
+    Dummy convolutional block with ReLU activation for ONNX export.
+    Mimics SNNtorch_ConvLIF interface.
+    """
+    def __init__(self, input_size, hidden_size, kernel_size, stride=1, activation=None, **kwargs):
+        super().__init__()
+        padding = kernel_size // 2
+        self.conv = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
+        self.relu = nn.ReLU()
+
+    def forward(self, input_, prev_state=None, residual=0):
+        out = self.conv(input_)
+        out = self.relu(out)
+        return out + residual, None
+
+class SNNtorch_ConvReLURecurrent(nn.Module):
+    """
+    Dummy recurrent convolutional block with ReLU activation for ONNX export.
+    Mimics SNNtorch_ConvLIFRecurrent interface.
+    """
+    def __init__(self, input_size, hidden_size, kernel_size, activation=None, **kwargs):
+        super().__init__()
+        padding = kernel_size // 2
+        self.conv = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
+        self.relu = nn.ReLU()
+
+    def forward(self, input_, prev_state=None):
+        out = self.conv(input_)
+        out = self.relu(out)
+        return out, None
+
 class SNNtorch_ConvLIF(nn.Module):
     """
     Convolutional spiking LIF cell using SNNTorch Leaky neuron.
@@ -297,3 +332,45 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         new_state = torch.stack([mem_out, spk_out])
 
         return spk_out, new_state
+
+class LIFBlockFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input_current, prev_mem, beta, threshold, hard_reset):
+        if prev_mem is None:
+            prev_mem = torch.zeros_like(input_current)
+        mem = beta * prev_mem + input_current
+        spk = (mem >= threshold).float()
+        if hard_reset:
+            mem = mem * (1 - spk)
+        else:
+            mem = mem - spk * threshold
+        return spk, mem
+
+    @staticmethod
+    def symbolic(g, input_current, prev_mem, beta, threshold, hard_reset):
+        return g.op(
+            "LeakyLIF",
+            input_current,
+            prev_mem,
+            beta,
+            threshold,
+            hard_reset_i=int(hard_reset)
+        )
+
+class LIF_forONNX(nn.Module):
+    def __init__(self, beta, threshold, hard_reset=True, learn_beta=None, learn_threshold=None, reset_mechanism=None, reset_delay=None):
+        super().__init__()
+        self.beta = beta
+        self.threshold = threshold
+        self.hard_reset = hard_reset
+        self.learn_beta = learn_beta
+        self.learn_threshold = learn_threshold
+        self.reset_mechanism = reset_mechanism
+        self.reset_delay = reset_delay
+
+    def forward(self, input_current, prev_mem):
+        return LIFBlockFunction.apply(input_current, prev_mem, self.beta, self.threshold, self.hard_reset)
+
+    def detach_hidden(self):
+        # No hidden state to detach, so just pass
+        pass

@@ -16,7 +16,7 @@ model:
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
     num_bins: 2
-    base_num_channels: 32
+    base_num_channels: 16
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True

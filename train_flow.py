@@ -12,11 +12,13 @@ from models.model import (
     FireNet,
     FireNet_short,
     FireFlowNet,
+    FireFlowNet_short,
 )
 from models.model import (
     LIFFireNet,
     LIFFireNet_short,
     LIFFireFlowNet,
+    LIFFireFlowNet_short,
 )
 from utils.gradients import get_grads
 from utils.utils import load_model, save_csv, save_diff, save_model
@@ -227,7 +229,7 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_short/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_16ch_short/")
                         os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {

@@ -26,7 +26,7 @@ def load_model(prev_runid, model, device, model_path_dir=""):
         # Check if the loaded object is a dictionary (your new format) or a model object (old format)
         if isinstance(checkpoint, dict):
             if 'model_state_dict' in checkpoint:
-                model.load_state_dict(checkpoint['model_state_dict'])
+                model.load_state_dict(checkpoint['model_state_dict'], strict=False)
             else:
                 # Fallback: assume the dict itself is the state dict
                 model.load_state_dict(checkpoint)
