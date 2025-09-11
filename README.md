@@ -1,4 +1,20 @@
-# SPiking Neural Networks for Ultra Low Power Event-Based Optical Flow Estimation
+# Spiking Neural Networks for Ultra Low Power Event-Based Optical Flow Estimation
+
+Repository structure:
+
+```
+📦Event_Flow
+ ┣ 📂configs
+ ┣ 📂dataloader
+ ┣ 📂loss
+ ┣ 📂models
+ ┣ 📂tools
+ ┣ 📂utils
+ ┃ 
+ ┣ 📜eval_flow.py
+ ┣ 📜train_flow.py
+ ┗ 📜quant_model_export.py
+```
 
 ## Usage
 
