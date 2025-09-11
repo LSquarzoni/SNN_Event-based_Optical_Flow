@@ -16,10 +16,6 @@ If you use this code in an academic context, please cite our work:
 
 This code allows for the reproduction of the experiments leading to the results in Section 4.1.
 
-<!-- &nbsp; -->
-<img src=".readme/flow.gif" width="880" height="220" />
-<!-- &nbsp; -->
-
 #
 
 ## Usage
