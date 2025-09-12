@@ -19,6 +19,7 @@ from models.model import (
     FireNet,
     FireNet_short,
     FireFlowNet,
+    FireFlowNet_short,
     EVFlowNet,
 
 )
@@ -26,6 +27,7 @@ from models.model import (
     LIFFireNet,
     LIFFireNet_short,
     LIFFireFlowNet,
+    LIFFireFlowNet_short,
     SpikingRecEVFlowNet,
 )
 from utils.iwe import compute_pol_iwe
@@ -145,21 +147,22 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
     #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
     #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
-    #model_path_dir = "mlruns/0/models/LIFFN_short//model.pth" # runid: bb4ece23356043fca1204176cb270c7d
-    #model_path_dir = "mlruns/0/models/LIFFN_16ch_short//model.pth" # runid: 
+    #model_path_dir = "mlruns/0/models/LIFFN_short/39/model.pth" # runid: bb4ece23356043fca1204176cb270c7d
+    #model_path_dir = "mlruns/0/models/LIFFN_16ch_short//model.pth" # runid: 7b3c8e69807d44c79abc682e96ff57e1
     #model_path_dir = "mlruns/0/models/LIFFN_8ch_short//model.pth" # runid: 
     #model_path_dir = "mlruns/0/models/LIFFN_4ch_short//model.pth" # runid: 
     
-    model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
-    #model_path_dir = "mlruns/0/models/LIFFFN_16ch//model.pth" # runid: 
-    #model_path_dir = "mlruns/0/models/LIFFFN_8ch//model.pth" # runid: 4899a1984ba74c91a44925426aa7c397
+    #model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
+    #model_path_dir = "mlruns/0/models/LIFFFN_16ch/23/model.pth" # runid: 5263c20879994d469904e950f8835953
+    #model_path_dir = "mlruns/0/models/LIFFFN_8ch/15/model.pth" # runid: 4899a1984ba74c91a44925426aa7c397
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch//model.pth" # runid: 
-    #model_path_dir = "mlruns/0/models/LIFFFN_short//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFFN_16ch_short//model.pth" # runid: 
-    #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short//model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
+    #model_path_dir = "mlruns/0/models/LIFFFN_short//model.pth" # runid: 5d9d714fafa144a888f770199de6ac46
+    #model_path_dir = "mlruns/0/models/LIFFFN_16ch_short//model.pth" # runid: 9b45bea0c1cd481a94a046e71793ef32
+    model_path_dir = "mlruns/0/models/LIFFFN_8ch_short/11/model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short//model.pth" # runid:
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
+    
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
     model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
     model.eval()

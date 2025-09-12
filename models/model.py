@@ -616,9 +616,9 @@ class LIFFireNet(FireNet):
     """
     Spiking FireNet architecture of LIF neurons for dense optical flow estimation from events.
     """
-    head_neuron = SNNtorch_ConvReLU
-    ff_neuron = SNNtorch_ConvReLU
-    rec_neuron = SNNtorch_ConvReLURecurrent
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -628,9 +628,9 @@ class LIFFireNet_short(FireNet_short):
     """
     Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
     """
-    head_neuron = SNNtorch_ConvReLU
-    ff_neuron = SNNtorch_ConvReLU
-    rec_neuron = SNNtorch_ConvReLURecurrent
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -640,9 +640,9 @@ class LIFFireFlowNet(FireNet):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = SNNtorch_ConvLIF
-    ff_neuron = SNNtorch_ConvLIF
-    rec_neuron = SNNtorch_ConvLIF
+    head_neuron = SNNtorch_ConvReLU
+    ff_neuron = SNNtorch_ConvReLU
+    rec_neuron = SNNtorch_ConvReLU
     residual = False
     w_scale_pred = 0.01
     

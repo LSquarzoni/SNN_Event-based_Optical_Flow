@@ -106,7 +106,6 @@ def export_to_onnx(args, config_parser, export_quantized=False):
 
             # Save example input for Deeploy
             np.savez('exported_models/inputs.npz',
-                     #event_voxel=event_voxel.cpu().numpy(),
                      event_cnt=event_cnt.cpu().numpy())
 
             # Run model to get output
@@ -120,7 +119,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler_TEST.onnx"
 
             print(f"Exporting model to: {onnx_file_path}")
-            print(f"Input shapes - event_voxel: {event_voxel.shape}, event_cnt: {event_cnt.shape}")
+            print(f"Input shape - event_cnt: {event_cnt.shape}")
 
             # Reset model states before export (again, for ONNX)
             model.reset_states()
@@ -148,11 +147,6 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     do_constant_folding=True,
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
-                    dynamic_axes={
-                        'event_voxel': {0: 'batch_size'},
-                        'event_cnt': {0: 'batch_size'},
-                        'flow': {0: 'batch_size'}
-                    }
                 )
 
             # Verify the exported model
