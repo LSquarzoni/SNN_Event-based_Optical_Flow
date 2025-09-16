@@ -671,7 +671,7 @@ class LIF(torch.nn.Module):
         # Per-channel learnable parameters
         self.beta = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(thresh[0], thresh[1]))
-        self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold)
+        self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold, reset_mechanism="zero")
 
     def forward(self, x, prev_mem=None):
         self.lif.threshold.data.clamp_(min=0.01)
