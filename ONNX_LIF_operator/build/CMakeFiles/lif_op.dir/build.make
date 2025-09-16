@@ -92,6 +92,10 @@ lif_op_EXTERNAL_OBJECTS =
 
 /home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: CMakeFiles/lif_op.dir/src/lif_op.cpp.o
 /home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: CMakeFiles/lif_op.dir/build.make
+/home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: /scratch/msc25h1/libtorch/lib/libtorch.so
+/home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: /scratch/msc25h1/libtorch/lib/libc10.so
+/home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: /scratch/msc25h1/libtorch/lib/libkineto.a
+/home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: /scratch/msc25h1/libtorch/lib/libc10.so
 /home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so: CMakeFiles/lif_op.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/msc25h1/event_flow/ONNX_LIF_operator/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX shared library /home/msc25h1/event_flow/ONNX_LIF_operator/src/python/liblif_op.so"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/lif_op.dir/link.txt --verbose=$(VERBOSE)

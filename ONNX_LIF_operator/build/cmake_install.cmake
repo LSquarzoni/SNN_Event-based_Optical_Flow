@@ -54,7 +54,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/liblif_op.so")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/liblif_op.so"
-         OLD_RPATH "/home/lorenzo/onnxruntime/lib:"
+         OLD_RPATH "/scratch/msc25h1/onnxruntime/lib:/lib/intel64:/lib/intel64_win:/lib/win-x64:/scratch/msc25h1/libtorch/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/liblif_op.so")

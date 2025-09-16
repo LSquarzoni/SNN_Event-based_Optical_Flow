@@ -1,64 +1,57 @@
 #include <onnxruntime_cxx_api.h>
-#include <vector>
-#include <cassert>
+#include <torch/script.h>
 
-using namespace ONNX_NAMESPACE;
+torch::Tensor lif_leaky(
+    torch::Tensor input,         // [N, C, H, W]
+    torch::Tensor mem,           // [N, C, H, W]
+    torch::Tensor beta,          // [C]
+    torch::Tensor threshold      // [C]
+) {
+    // Get raw pointers
+    float* input_data = input.data<float>();
+    float* mem_data = mem.data<float>();
+    float* beta_data = beta.data<float>();
+    float* threshold_data = threshold.data<float>();
 
-class LIFOperator : public Ort::CustomOpBase<LIFOperator, Ort::Kernel> {
-public:
-    void Compute(OrtKernelContext* context) {
-        // Get input tensors
-        const OrtValue* input_tensor = ort_api->KernelContext_GetInput(context, 0);
-        const OrtValue* mem_tensor = ort_api->KernelContext_GetInput(context, 1);
-        const OrtValue* beta_tensor = ort_api->KernelContext_GetInput(context, 2);
-        const OrtValue* threshold_tensor = ort_api->KernelContext_GetInput(context, 3);
+    // Get dimensions
+    auto sizes = input.sizes();
+    int64_t N = sizes[0];
+    int64_t C = sizes[1];
+    int64_t H = sizes[2];
+    int64_t W = sizes[3];
+    int64_t numel = N * C * H * W;
 
-        // Get input shapes
-        OrtTensorDimensions input_dims(ort_api, input_tensor);
-        assert(input_dims.size() == 4); // [batch, channels, height, width]
-        size_t num_batches = input_dims[0];
-        size_t num_channels = input_dims[1];
-        size_t height = input_dims[2];
-        size_t width = input_dims[3];
-        size_t num_elements = num_batches * num_channels * height * width;
+    // Output tensors
+    torch::Tensor spike = torch::zeros_like(input);
+    torch::Tensor mem_out = torch::zeros_like(input);
+    float* spike_data = spike.data<float>();
+    float* mem_out_data = mem_out.data<float>();
 
-        // Get data pointers
-        const float* input_data = ort_api->GetTensorData<float>(input_tensor);
-        const float* mem_data = ort_api->GetTensorData<float>(mem_tensor);
-        const float* beta_data = ort_api->GetTensorData<float>(beta_tensor);       // shape: [channels]
-        const float* threshold_data = ort_api->GetTensorData<float>(threshold_tensor); // shape: [channels]
-
-        // Get output tensors
-        OrtValue* spike_tensor = ort_api->KernelContext_GetOutput(context, 0, input_dims.data(), input_dims.size());
-        OrtValue* mem_out_tensor = ort_api->KernelContext_GetOutput(context, 1, input_dims.data(), input_dims.size());
-        float* spike_data = ort_api->GetTensorMutableData<float>(spike_tensor);
-        float* mem_out_data = ort_api->GetTensorMutableData<float>(mem_out_tensor);
-
-        // LIF computation with reset-to-zero and per-channel beta/threshold
-        // Store updated membrane voltage as the state of the LIF layer
-        for (size_t b = 0; b < num_batches; ++b) {
-            for (size_t c = 0; c < num_channels; ++c) {
-                float beta = beta_data[c];
-                float threshold = threshold_data[c];
-                for (size_t h = 0; h < height; ++h) {
-                    for (size_t w = 0; w < width; ++w) {
-                        size_t idx = ((b * num_channels + c) * height + h) * width + w;
-                        float updated_mem = beta * mem_data[idx] + input_data[idx];
-                        if (updated_mem >= threshold) {
-                            spike_data[idx] = 1.0f;
-                            mem_out_data[idx] = 0.0f; // reset to zero after spike
-                        } else {
-                            spike_data[idx] = 0.0f;
-                            mem_out_data[idx] = updated_mem; // store updated membrane voltage
-                        }
+    // LIF computation
+    for (int64_t n = 0; n < N; ++n) {
+        for (int64_t c = 0; c < C; ++c) {
+            float beta_val = beta_data[c];
+            float threshold_val = threshold_data[c];
+            for (int64_t h = 0; h < H; ++h) {
+                for (int64_t w = 0; w < W; ++w) {
+                    int64_t idx = ((n * C + c) * H + h) * W + w;
+                    float updated_mem = beta_val * mem_data[idx] + input_data[idx];
+                    if (updated_mem >= threshold_val) {
+                        spike_data[idx] = 1.0f;
+                        mem_out_data[idx] = 0.0f; // reset to zero after spike
+                    } else {
+                        spike_data[idx] = 0.0f;
+                        mem_out_data[idx] = updated_mem;
                     }
                 }
             }
         }
     }
-};
 
-// Register the operator
-ORT_API_STATUS* CreateLIFOperator(Ort::CustomOpApi api, const OrtKernelInfo* info) {
-    return new LIFOperator();
+    // You can return a tuple or just one tensor depending on your needs
+    // Example: return torch::stack({spike, mem_out}, 0);
+    // Or, if you want to return both:
+    return torch::cat({spike.unsqueeze(0), mem_out.unsqueeze(0)}, 0); // shape [2, N, C, H, W]
 }
+
+static auto registry = torch::RegisterOperators("mynamespace::lif_leaky", &lif_leaky);

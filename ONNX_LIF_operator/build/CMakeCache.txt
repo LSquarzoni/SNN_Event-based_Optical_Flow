@@ -212,6 +212,15 @@ CMAKE_STRIP:FILEPATH=/usr/bin/strip
 // Studio IDE projects all commands are done without /nologo.
 CMAKE_VERBOSE_MAKEFILE:BOOL=FALSE
 
+//The directory containing a CMake configuration file for Caffe2.
+Caffe2_DIR:PATH=/scratch/msc25h1/libtorch/share/cmake/Caffe2
+
+//The directory containing a CMake configuration file for MKLDNN.
+MKLDNN_DIR:PATH=MKLDNN_DIR-NOTFOUND
+
+//The directory containing a CMake configuration file for MKL.
+MKL_DIR:PATH=MKL_DIR-NOTFOUND
+
 //Value Computed by CMake
 ONNX_LIF_operator_BINARY_DIR:STATIC=/home/msc25h1/event_flow/ONNX_LIF_operator/build
 
@@ -221,8 +230,17 @@ ONNX_LIF_operator_IS_TOP_LEVEL:STATIC=ON
 //Value Computed by CMake
 ONNX_LIF_operator_SOURCE_DIR:STATIC=/home/msc25h1/event_flow/ONNX_LIF_operator
 
+//Path to a library.
+TORCH_LIBRARY:FILEPATH=/scratch/msc25h1/libtorch/lib/libtorch.so
+
+//Path to a library.
+c10_LIBRARY:FILEPATH=/scratch/msc25h1/libtorch/lib/libc10.so
+
+//Path to a library.
+kineto_LIBRARY:FILEPATH=/scratch/msc25h1/libtorch/lib/libkineto.a
+
 //Dependencies for the target
-lif_op_LIB_DEPENDS:STATIC=general;onnxruntime;
+lif_op_LIB_DEPENDS:STATIC=general;onnxruntime;general;torch;torch_library;/scratch/msc25h1/libtorch/lib/libc10.so;/scratch/msc25h1/libtorch/lib/libkineto.a;
 
 
 ########################
@@ -374,6 +392,8 @@ CMAKE_STRIP-ADVANCED:INTERNAL=1
 CMAKE_UNAME:INTERNAL=/usr/bin/uname
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
+//Details about finding Torch
+FIND_PACKAGE_MESSAGE_DETAILS_Torch:INTERNAL=[/scratch/msc25h1/libtorch/lib/libtorch.so][/scratch/msc25h1/libtorch/include;/scratch/msc25h1/libtorch/include/torch/csrc/api/include][v()]
 //linker supports push/pop state
 _CMAKE_LINKER_PUSHPOP_STATE_SUPPORTED:INTERNAL=TRUE
 
