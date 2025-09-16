@@ -12,9 +12,6 @@ from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
 
-# Dummy ReLU-based modules for ONNX export
-import torch.nn as nn
-
 class SNNtorch_ConvReLU(nn.Module):
     """
     Dummy convolutional block with ReLU activation for ONNX export.
@@ -333,7 +330,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
 
         return spk_out, new_state
 
-class LIFBlockFunction(torch.autograd.Function):
+""" class LIFBlockFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_current, prev_mem, beta, threshold, hard_reset):
         if prev_mem is None:
@@ -373,4 +370,4 @@ class LIF_forONNX(nn.Module):
 
     def detach_hidden(self):
         # No hidden state to detach, so just pass
-        pass
+        pass """

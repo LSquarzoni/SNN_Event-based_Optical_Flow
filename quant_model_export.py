@@ -12,7 +12,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from models.model import LIFFireNet, LIFFireFlowNet
+from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short, LIF
 from utils.utils import load_model
 
 def calibrate_model(calibration_loader, quant_model, device, num_batches=50):
@@ -65,7 +65,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
 
     # Only load weights if not dummy
     if args.runid != "dummy":
-        model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+        model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
         model = load_model(args.runid, model, device, model_path_dir)
         pass
 
@@ -115,8 +115,8 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             np.savez('exported_models/outputs.npz', flow=flow)
 
             # Export paths
-            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_TEST.onnx"
-            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler_TEST.onnx"
+            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}.onnx"
+            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler.onnx"
 
             print(f"Exporting model to: {onnx_file_path}")
             print(f"Input shape - event_cnt: {event_cnt.shape}")
@@ -147,6 +147,11 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     do_constant_folding=True,
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
+                    dynamic_axes={
+                        'event_voxel': {0: 'batch_size'},
+                        'event_cnt': {0: 'batch_size'},
+                        'flow': {0: 'batch_size'}
+                    }
                 )
 
             # Verify the exported model

@@ -3,6 +3,7 @@ Adapted from UZH-RPG https://github.com/uzh-rpg/rpg_e2vid
 """
 
 import torch
+import snntorch as snn
 
 from .base import BaseModel
 from .model_util import copy_states, CropParameters
@@ -640,9 +641,9 @@ class LIFFireFlowNet(FireNet):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = SNNtorch_ConvReLU
-    ff_neuron = SNNtorch_ConvReLU
-    rec_neuron = SNNtorch_ConvReLU
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
     
@@ -657,3 +658,24 @@ class LIFFireFlowNet_short(FireNet_short):
     rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
+    
+    
+class LIF(torch.nn.Module):
+    """
+    Minimal single-layer LIF model using snn.Leaky.
+    Input: N x channels x H x W
+    Output: N x channels x H x W (spikes)
+    """
+    def __init__(self, channels=4, leak=(0.0, 1.0), thresh=(0.0, 0.8)):
+        super().__init__()
+        # Per-channel learnable parameters
+        self.beta = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(leak[0], leak[1]))
+        self.threshold = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(thresh[0], thresh[1]))
+        self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold)
+
+    def forward(self, x, prev_mem=None):
+        self.lif.threshold.data.clamp_(min=0.01)
+        
+        # x: N x channels x H x W
+        spk, mem = self.lif(x, prev_mem)
+        return spk, mem

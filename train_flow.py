@@ -229,7 +229,7 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_16ch_short/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFFN_4ch_short/")
                         os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {
