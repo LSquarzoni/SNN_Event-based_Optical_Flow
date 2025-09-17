@@ -147,11 +147,11 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     do_constant_folding=True,
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
-                    dynamic_axes={
-                        'event_voxel': {0: 'batch_size'},
-                        'event_cnt': {0: 'batch_size'},
-                        'flow': {0: 'batch_size'}
-                    }
+                    # dynamic_axes={
+                    #     'event_voxel': {0: 'batch_size'},
+                    #     'event_cnt': {0: 'batch_size'},
+                    #     'flow': {0: 'batch_size'}
+                    # }
                 )
 
             # Verify the exported model
