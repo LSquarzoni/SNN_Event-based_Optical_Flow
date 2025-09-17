@@ -5,7 +5,7 @@ from models.model import LIF
 from torch.onnx import register_custom_op_symbolic
 
 # Load your custom C++ operator
-torch.ops.load_library("ONNX_LIF_operator/build/lib.linux-x86_64-cpython-313/lif_op.cpython-313-x86_64-linux-gnu.so")
+torch.ops.load_library("ONNX_LIF_operator/build/lib.linux-x86_64-cpython-39/lif_op.cpython-39-x86_64-linux-gnu.so")
 
 # 1. Define and register the symbolic function
 def lif_leaky_symbolic(g, input, mem, beta, threshold):
