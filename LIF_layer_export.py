@@ -2,6 +2,16 @@ import torch
 import numpy as np
 import os
 from models.model import LIF
+from torch.onnx import register_custom_op_symbolic
+
+# Load your custom C++ operator
+torch.ops.load_library("ONNX_LIF_operator/build/lib.linux-x86_64-cpython-313/lif_op.cpython-313-x86_64-linux-gnu.so")
+
+# 1. Define and register the symbolic function
+def lif_leaky_symbolic(g, input, mem, beta, threshold):
+    return g.op("mynamespace::lif_leaky", input, mem, beta, threshold)
+
+register_custom_op_symbolic('mynamespace::lif_leaky', lif_leaky_symbolic, 11)
 
 # Settings for dummy input and model
 batch_size = 1
@@ -37,7 +47,7 @@ np.savez('exported_models/outputs.npz',
 onnx_path = "exported_models/network.onnx"
 torch.onnx.export(
     model,
-    (dummy_input, None),  # LIF expects (x, prev_mem)
+    (dummy_input, mem),  # LIF expects (x, prev_mem)
     onnx_path,
     export_params=True,
     opset_version=11,
@@ -48,7 +58,8 @@ torch.onnx.export(
         'x': {0: 'batch_size'},
         'spk': {0: 'batch_size'},
         'mem': {0: 'batch_size'}
-    }
+    },
+    custom_opsets={"mynamespace": 1}
 )
 
 print(f"Exported LIF model to {onnx_path}")
