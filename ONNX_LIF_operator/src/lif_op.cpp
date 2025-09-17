@@ -1,5 +1,6 @@
 #include <onnxruntime_cxx_api.h>
 #include <torch/script.h>
+#include <ATen/ATen.h>
 
 torch::Tensor lif_leaky(
     torch::Tensor input,         // [N, C, H, W]
@@ -8,10 +9,10 @@ torch::Tensor lif_leaky(
     torch::Tensor threshold      // [C]
 ) {
     // Get raw pointers
-    float* input_data = input.data<float>();
-    float* mem_data = mem.data<float>();
-    float* beta_data = beta.data<float>();
-    float* threshold_data = threshold.data<float>();
+    float* input_data = input.data_ptr<float>();
+    float* mem_data = mem.data_ptr<float>();
+    float* beta_data = beta.data_ptr<float>();
+    float* threshold_data = threshold.data_ptr<float>();
 
     // Get dimensions
     auto sizes = input.sizes();
@@ -24,8 +25,8 @@ torch::Tensor lif_leaky(
     // Output tensors
     torch::Tensor spike = torch::zeros_like(input);
     torch::Tensor mem_out = torch::zeros_like(input);
-    float* spike_data = spike.data<float>();
-    float* mem_out_data = mem_out.data<float>();
+    float* spike_data = spike.data_ptr<float>();
+    float* mem_out_data = mem_out.data_ptr<float>();
 
     // LIF computation
     for (int64_t n = 0; n < N; ++n) {

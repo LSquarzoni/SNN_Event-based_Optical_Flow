@@ -7,3 +7,5 @@ mlruns/
 venv/
 datasets/
 exported_models/
+ONNX_LIF_operator/build/
+build/

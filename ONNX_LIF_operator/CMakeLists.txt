@@ -2,20 +2,22 @@ cmake_minimum_required(VERSION 3.10)
 project(ONNX_LIF_operator)
 
 # Set the C++ standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Set ONNX Runtime paths
-set(ONNXRUNTIME_DIR "/scratch/msc25h1/onnxruntime")
+#set(ONNXRUNTIME_DIR "/scratch/msc25h1/onnxruntime")
+set(ONNXRUNTIME_DIR "/home/lorenzo/onnxruntime")
 include_directories(${ONNXRUNTIME_DIR}/include)
 link_directories(${ONNXRUNTIME_DIR}/lib)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # LibTorch C++ paths
-set(Torch_DIR "/scratch/msc25h1/libtorch/share/cmake/Torch")
+#set(Torch_DIR "/scratch/msc25h1/libtorch/share/cmake/Torch")
+set(Torch_DIR "/home/lorenzo/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
-include_directories("/scratch/msc25h1/libtorch/include")
-include_directories("/scratch/msc25h1/libtorch/include/torch/csrc/api/include")
+include_directories("/home/lorenzo/libtorch/include")
+include_directories("/home/lorenzo/libtorch/include/torch/csrc/api/include")
 
 # Add the LIF operator library
 add_library(lif_op SHARED src/lif_op.cpp)
