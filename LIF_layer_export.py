@@ -2,16 +2,8 @@ import torch
 import numpy as np
 import os
 from models.model import LIF
-from torch.onnx import register_custom_op_symbolic
-
-# Load your custom C++ operator
-torch.ops.load_library("ONNX_LIF_operator/build/lib.linux-x86_64-cpython-39/lif_op.cpython-39-x86_64-linux-gnu.so")
-
-# 1. Define and register the symbolic function
-def lif_leaky_symbolic(g, input, mem, beta, threshold):
-    return g.op("mynamespace::lif_leaky", input, mem, beta, threshold)
-
-register_custom_op_symbolic('mynamespace::lif_leaky', lif_leaky_symbolic, 11)
+import onnx
+from onnxsim import simplify
 
 # Settings for dummy input and model
 batch_size = 1
@@ -45,21 +37,32 @@ np.savez('exported_models/outputs.npz',
 
 # Export to ONNX
 onnx_path = "exported_models/network.onnx"
+onnx_simpler_path = "exported_models/network_simpler.onnx"
 torch.onnx.export(
     model,
-    (dummy_input, mem),  # LIF expects (x, prev_mem)
+    (dummy_input, None),  # LIF expects (x, prev_mem)
     onnx_path,
     export_params=True,
     opset_version=11,
     do_constant_folding=True,
     input_names=['x', 'prev_mem'],
     output_names=['spk', 'mem'],
-    dynamic_axes={
-        'x': {0: 'batch_size'},
-        'spk': {0: 'batch_size'},
-        'mem': {0: 'batch_size'}
-    },
-    custom_opsets={"mynamespace": 1}
+    # dynamic_axes={
+    #     'x': {0: 'batch_size'},
+    #     'spk': {0: 'batch_size'},
+    #     'mem': {0: 'batch_size'}
+    # }
 )
 
-print(f"Exported LIF model to {onnx_path}")
+# Verify the exported model
+onnx_model = onnx.load(onnx_path)
+onnx.checker.check_model(onnx_model)
+print(f"ONNX model exported successfully and verified!")
+
+simpler_model, check = simplify(onnx_model)
+if check:
+    onnx.save(simpler_model, onnx_simpler_path)
+    print("Simplified ONNX model saved successfully!")
+
+# Print model info
+print(f"Model size: {len(onnx_model.SerializeToString()) / 1024 / 1024:.2f} MB")
