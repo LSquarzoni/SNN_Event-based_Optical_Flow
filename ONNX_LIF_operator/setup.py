@@ -5,7 +5,9 @@ import numpy as np
 lif_op_extension = Extension(
     'lif_op',
     sources=['src/lif_op.cpp'],
-    include_dirs=[np.get_include()],
+    include_dirs=["/home/lorenzo/onnxruntime/include",
+                  "/home/lorenzo/libtorch/include",
+                  "/home/lorenzo/libtorch/include/torch/csrc/api/include"],
     language='c++',
 )
 

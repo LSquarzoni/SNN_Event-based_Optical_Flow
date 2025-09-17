@@ -1,0 +1,11 @@
+README.md
+setup.py
+ONNX_LIF_operator.egg-info/PKG-INFO
+ONNX_LIF_operator.egg-info/SOURCES.txt
+ONNX_LIF_operator.egg-info/dependency_links.txt
+ONNX_LIF_operator.egg-info/not-zip-safe
+ONNX_LIF_operator.egg-info/requires.txt
+ONNX_LIF_operator.egg-info/top_level.txt
+src/lif_op.cpp
+src/python/lif_op.py
+test/test_lif_op.py
