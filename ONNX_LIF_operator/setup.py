@@ -1,6 +1,7 @@
 from setuptools import setup, Extension
 import numpy as np
 
+
 lif_op_extension = Extension(
     'lif_op',
     sources=['src/lif_op.cpp'],
