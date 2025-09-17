@@ -237,6 +237,7 @@ class FireNet_short(BaseModel):
 
         self.pred = ConvLayer(
             base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
+            #base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property
