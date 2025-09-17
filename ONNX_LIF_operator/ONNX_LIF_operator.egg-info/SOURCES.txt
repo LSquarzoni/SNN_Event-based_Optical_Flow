@@ -1,4 +1,3 @@
-README.md
 setup.py
 ONNX_LIF_operator.egg-info/PKG-INFO
 ONNX_LIF_operator.egg-info/SOURCES.txt
