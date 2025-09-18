@@ -217,21 +217,23 @@ class FireNet_short(BaseModel):
         
         quantization_config = unet_kwargs.get("quantization", {})
 
-        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0], quantization_config=quantization_config)
+        self.head = self.head_neuron(
+            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config
+        )
         
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=rec_act, **self.kwargs[1], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[2], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         # R1b removed
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=rec_act, **self.kwargs[3], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[4], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         # R2b removed
 
@@ -612,7 +614,7 @@ class SpikingRecEVFlowNet(RecEVFlowNet):
 
 
 # For ONNX export, swap LIF neurons for dummy ReLU modules
-from .SNNtorch_spiking_submodules import SNNtorch_ConvReLU, SNNtorch_ConvReLURecurrent
+from .SNNtorch_spiking_submodules import SNNtorch_ConvReLU, SNNtorch_ConvReLURecurrent, SNNtorch_FCLIF
 
 class LIFFireNet(FireNet):
     """
@@ -677,3 +679,15 @@ class LIF(torch.nn.Module):
         self.threshold.data.clamp_(min=0.01)
         # Use custom operator for ONNX export
         return torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold)
+    
+    
+class LIF_Fully_Connected(FireNet_short):
+    """
+    Spiking FireFlowNet_short architecture in which fully connected layers replaced convolutional ones.
+    """
+
+    head_neuron = SNNtorch_FCLIF
+    ff_neuron = SNNtorch_FCLIF
+    rec_neuron = SNNtorch_FCLIF
+    residual = False
+    w_scale_pred = 0.01

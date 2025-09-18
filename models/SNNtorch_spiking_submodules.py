@@ -371,3 +371,100 @@ class LIF_forONNX(nn.Module):
     def detach_hidden(self):
         # No hidden state to detach, so just pass
         pass """
+        
+        
+class SNNtorch_FCLIF(nn.Module):
+    """
+    Fully connected spiking LIF cell using SNNTorch Leaky neuron.
+    Mimics SNNtorch_ConvLIF but uses nn.Linear instead of nn.Conv2d.
+    """
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        activation="arctanspike",
+        act_width=10.0,
+        leak=(0.0, 1.0),
+        thresh=(0.0, 0.8),
+        learn_leak=True,
+        learn_thresh=True,
+        hard_reset=True,
+        detach=True,
+        norm=None,
+        quantization_config=None,
+    ):
+        super().__init__()
+
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+
+        self.beta = nn.Parameter(torch.empty(hidden_size, 1).uniform_(leak[0], leak[1]))
+        self.threshold = nn.Parameter(torch.empty(hidden_size, 1).uniform_(thresh[0], thresh[1]))
+
+        reset_mechanism = "zero" if hard_reset else "subtract"
+
+        self.quantization_config = quantization_config["enabled"] if quantization_config is not None else False
+
+        if quantization_config is not None and self.quantization_config:
+            self.fc = brevitas.nn.QuantLinear(
+                input_size,
+                hidden_size,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=Int8ActPerTensorFloat,
+                output_quant=Int8ActPerTensorFloat,
+                return_quant_tensor=True,
+            )
+            q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
+            self.lif = snn.Leaky(
+                beta=self.beta,
+                threshold=self.threshold,
+                learn_beta=learn_leak,
+                learn_threshold=learn_thresh,
+                reset_mechanism=reset_mechanism,
+                reset_delay=False,
+                #state_quant=q_lif,
+            )
+            self.quant_identity = QuantIdentity(return_quant_tensor=True)
+        else:
+            self.fc = nn.Linear(input_size, hidden_size, bias=False)
+            self.lif = snn.Leaky(
+                beta=self.beta,
+                threshold=self.threshold,
+                learn_beta=learn_leak,
+                learn_threshold=learn_thresh,
+                reset_mechanism=reset_mechanism,
+                reset_delay=False,
+            )
+
+        w_scale = math.sqrt(1 / input_size)
+        nn.init.uniform_(self.fc.weight, -w_scale, w_scale)
+
+        self.detach = detach
+
+        self.norm = None
+        if norm == "weight":
+            self.fc = nn.utils.weight_norm(self.fc)
+        elif norm == "layer":
+            self.norm = nn.LayerNorm(hidden_size)
+
+    def forward(self, input_, prev_state, residual=0):
+        self.lif.threshold.data.clamp_(min=0.01)
+
+        if self.norm is not None:
+            input_ = self.norm(input_)
+        fc_out = self.fc(input_)
+
+        if prev_state is None:
+            mem = None
+        else:
+            mem = prev_state[0]
+
+        spk, mem_out = self.lif(fc_out, mem)
+
+        if self.detach:
+            self.lif.detach_hidden()
+
+        new_state = torch.stack([mem_out, spk])
+
+        return spk + residual, new_state
