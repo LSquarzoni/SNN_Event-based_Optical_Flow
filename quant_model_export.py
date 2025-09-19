@@ -106,12 +106,12 @@ def export_to_onnx(args, config_parser, export_quantized=False):
 
             # Save example input for Deeploy
             np.savez('exported_models/inputs.npz',
-                     event_cnt=event_cnt.cpu().numpy())
+                     event_cnt=event_cnt.cpu().numpy().astype(np.float32))
 
             # Run model to get output
             model.reset_states()
             x = model(event_voxel, event_cnt)
-            flow = x["flow"][0].cpu().numpy()
+            flow = x["flow"][0].cpu().numpy().astype(np.float32)
             np.savez('exported_models/outputs.npz', flow=flow)
 
             # Export paths
