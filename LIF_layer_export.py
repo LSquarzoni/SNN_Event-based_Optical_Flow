@@ -4,12 +4,20 @@ import os
 from models.model import LIF
 import onnx
 from onnxsim import simplify
+from torch.onnx import register_custom_op_symbolic
+
+def lif_leaky_symbolic(g, input, mem, beta, threshold):
+    return g.op("mynamespace::lif_leaky", input, mem, beta, threshold)
 
 # Settings for dummy input and model
 batch_size = 1
 channels = 4  # hidden_size for LIF
 height = 32
 width = 32
+
+# Load the custom LIF operator
+register_custom_op_symbolic('mynamespace::lif_leaky', lif_leaky_symbolic, 11)
+torch.ops.load_library("ONNX_LIF_operator/build/lib.linux-x86_64-cpython-39/lif_op.cpython-39-x86_64-linux-gnu.so")
 
 os.makedirs("exported_models", exist_ok=True)
 
