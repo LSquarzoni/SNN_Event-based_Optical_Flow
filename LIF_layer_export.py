@@ -7,7 +7,7 @@ from onnxsim import simplify
 from torch.onnx import register_custom_op_symbolic
 
 def lif_leaky_symbolic(g, input, mem, beta, threshold):
-    return g.op("SNN_implementation::LIF", input, mem, beta, threshold)
+    return g.op("SNN_implementation::LIF", input, mem, beta, threshold, outputs=2)
 
 # Settings for dummy input and model
 batch_size = 1
@@ -23,12 +23,12 @@ os.makedirs("exported_models", exist_ok=True)
 
 # Create dummy input (N x channels x H x W)
 dummy_input = torch.randn(batch_size, channels, height, width)
-mem = torch.zeros(batch_size, channels, height, width)
+dummy_mem = torch.zeros(batch_size, channels, height, width)
 
 # Save example input for reference
 np.savez('exported_models/inputs.npz',
          input=dummy_input.cpu().numpy(),
-         mem=mem.cpu().numpy())
+         mem=dummy_mem.cpu().numpy())
 
 # Initialize LIF model
 model = LIF(channels=channels, use_custom_op=True)
@@ -36,7 +36,7 @@ model.eval()
 
 # Run model to get output
 with torch.no_grad():
-    spk, mem = model(dummy_input, mem)
+    spk, mem = model(dummy_input, dummy_mem)
 
 # Save example output for reference
 np.savez('exported_models/outputs.npz',
@@ -48,7 +48,7 @@ onnx_path = "exported_models/network.onnx"
 onnx_simpler_path = "exported_models/network_simpler.onnx"
 torch.onnx.export(
     model,
-    (dummy_input, None),  # LIF expects (x, prev_mem)
+    (dummy_input, dummy_mem),  # LIF expects (x, prev_mem)
     onnx_path,
     export_params=True,
     opset_version=11,
