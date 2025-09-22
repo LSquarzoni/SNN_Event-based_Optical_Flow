@@ -668,19 +668,26 @@ class LIF(torch.nn.Module):
     Input: N x channels x H x W
     Output: N x channels x H x W (spikes)
     """
-    def __init__(self, channels=4, leak=(0.0, 1.0), thresh=(0.0, 0.8)):
+    def __init__(self, channels=4, leak=(0.0, 1.0), thresh=(0.0, 0.8), use_custom_op=False):
         super().__init__()
         # Per-channel learnable parameters
         self.beta = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(thresh[0], thresh[1]))
         self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold, reset_mechanism="zero", surrogate_disable=True)
-        self.use_custom_op = False
+        self.use_custom_op = use_custom_op
 
     def forward(self, x, prev_mem=None):
         if self.use_custom_op:
             # Use custom operator for ONNX export
             self.threshold.data.clamp_(min=0.01)
-            return torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold)
+            if prev_mem is None:
+                prev_mem = torch.zeros_like(x)
+            else:
+                prev_mem = prev_mem.float()
+            out = torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold)
+            spk = out[0]  # shape [N, C, H, W]
+            mem = out[1]  # shape [N, C, H, W]
+            return spk, mem
         else:
             # Use snn.Leaky for training/inference
             self.lif.threshold.data.clamp_(min=0.01)
