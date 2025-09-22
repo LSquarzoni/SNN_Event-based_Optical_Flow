@@ -7,4 +7,4 @@ mlruns/
 venv/
 datasets/
 exported_models/
-build/
+/build/
