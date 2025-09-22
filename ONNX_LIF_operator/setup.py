@@ -8,7 +8,10 @@ lif_op_extension = Extension(
     include_dirs=["/home/lorenzo/onnxruntime/include",
                   "/home/lorenzo/libtorch/include",
                   "/home/lorenzo/libtorch/include/torch/csrc/api/include"],
+    library_dirs=["/home/lorenzo/libtorch/lib", "/home/lorenzo/onnxruntime/lib"],
+    libraries=["torch", "torch_cpu", "c10", "onnxruntime"],
     language='c++',
+    extra_compile_args=['-std=c++17'],
 )
 
 setup(
