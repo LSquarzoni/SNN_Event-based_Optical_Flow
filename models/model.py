@@ -682,11 +682,12 @@ class LIF(torch.nn.Module):
             self.threshold.data.clamp_(min=0.01)
             if prev_mem is None:
                 prev_mem = torch.zeros_like(x)
-            else:
-                prev_mem = prev_mem.float()
-            out = torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold)
+
+            out = torch.ops.SNN_implementation.LIF(x, prev_mem, self.beta, self.threshold)
             spk = out[0]  # shape [N, C, H, W]
             mem = out[1]  # shape [N, C, H, W]
+
+            prev_mem = mem
             return spk, mem
         else:
             # Use snn.Leaky for training/inference

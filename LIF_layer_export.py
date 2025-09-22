@@ -7,7 +7,7 @@ from onnxsim import simplify
 from torch.onnx import register_custom_op_symbolic
 
 def lif_leaky_symbolic(g, input, mem, beta, threshold):
-    return g.op("mynamespace::lif_leaky", input, mem, beta, threshold)
+    return g.op("SNN_implementation::LIF", input, mem, beta, threshold)
 
 # Settings for dummy input and model
 batch_size = 1
@@ -16,7 +16,7 @@ height = 32
 width = 32
 
 # Load the custom LIF operator
-register_custom_op_symbolic('mynamespace::lif_leaky', lif_leaky_symbolic, 11)
+register_custom_op_symbolic('SNN_implementation::LIF', lif_leaky_symbolic, 11)
 torch.ops.load_library("ONNX_LIF_operator/build/lib.linux-x86_64-cpython-39/lif_op.cpython-39-x86_64-linux-gnu.so")
 
 os.makedirs("exported_models", exist_ok=True)
@@ -55,6 +55,7 @@ torch.onnx.export(
     do_constant_folding=True,
     input_names=['x', 'prev_mem'],
     output_names=['spk', 'mem'],
+    custom_opsets={"SNN_implementation": 11},
     # dynamic_axes={
     #     'x': {0: 'batch_size'},
     #     'spk': {0: 'batch_size'},

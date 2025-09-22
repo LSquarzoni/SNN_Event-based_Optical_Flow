@@ -1,8 +1,9 @@
 #include <onnxruntime_cxx_api.h>
 #include <torch/script.h>
 #include <ATen/ATen.h>
+#include <tuple> 
 
-torch::Tensor lif_leaky(
+std::tuple<torch::Tensor, torch::Tensor> LIF(
     torch::Tensor input,         // [N, C, H, W]
     torch::Tensor mem,           // [N, C, H, W]
     torch::Tensor beta,          // [C]
@@ -20,7 +21,6 @@ torch::Tensor lif_leaky(
     int64_t C = sizes[1];
     int64_t H = sizes[2];
     int64_t W = sizes[3];
-    int64_t numel = N * C * H * W;
 
     // Output tensors
     torch::Tensor spike = torch::zeros_like(input);
@@ -49,10 +49,8 @@ torch::Tensor lif_leaky(
         }
     }
 
-    // You can return a tuple or just one tensor depending on your needs
-    // Example: return torch::stack({spike, mem_out}, 0);
-    // Or, if you want to return both:
-    return torch::cat({spike.unsqueeze(0), mem_out.unsqueeze(0)}, 0); // shape [2, N, C, H, W]
+    // Return as a tuple: (spike, mem_out), each with shape [N, C, H, W]
+    return std::make_tuple(spike, mem_out);
 }
 
-static auto registry = torch::RegisterOperators("mynamespace::lif_leaky", &lif_leaky);
+static auto registry = torch::RegisterOperators("SNN_implementation::LIF", &LIF);
