@@ -4,6 +4,7 @@ Adapted from UZH-RPG https://github.com/uzh-rpg/rpg_e2vid
 
 import torch
 import snntorch as snn
+import math
 
 from .base import BaseModel
 from .model_util import copy_states, CropParameters
@@ -614,7 +615,7 @@ class SpikingRecEVFlowNet(RecEVFlowNet):
 
 
 # For ONNX export, swap LIF neurons for dummy ReLU modules
-from .SNNtorch_spiking_submodules import SNNtorch_ConvReLU, SNNtorch_ConvReLURecurrent, SNNtorch_FCLIF
+from .SNNtorch_spiking_submodules import SNNtorch_ConvReLU, SNNtorch_ConvReLURecurrent
 
 class LIFFireNet(FireNet):
     """
@@ -696,13 +697,85 @@ class LIF(torch.nn.Module):
             return spk, mem
     
     
-class LIF_Fully_Connected(FireNet_short):
+class SNNtorch_FCLIF(torch.nn.Module):
     """
-    Spiking FireFlowNet_short architecture in which fully connected layers replaced convolutional ones.
+    Fully connected spiking LIF small model using SNNTorch Leaky neuron.
     """
+    def __init__(self, leak=(0.0, 1.0), thresh=(0.0, 0.8), detach=True):
+        super().__init__()
+        self.detach = detach
+        # Model expects input [B,2,H,W]
+        self.in_channels = 2
+        # FC layer sizes
+        self.fc1_dim = 4
+        self.fc2_dim = 256
+        self.fc3_dim = 4
 
-    head_neuron = SNNtorch_FCLIF
-    ff_neuron = SNNtorch_FCLIF
-    rec_neuron = SNNtorch_FCLIF
-    residual = False
-    w_scale_pred = 0.01
+        self.fc1 = torch.nn.Linear(None, self.fc1_dim, bias=True)  # Placeholder, will be replaced in forward
+        self.lif1 = snn.Leaky(
+            beta=torch.nn.Parameter(torch.empty(self.fc1_dim, 1).uniform_(leak[0], leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.fc1_dim, 1).uniform_(thresh[0], thresh[1])),
+            learn_beta=True,
+            learn_threshold=True,
+            reset_mechanism="zero",
+            reset_delay=False,
+            spike_grad=snn.surrogate.atan(alpha=2),
+        )
+        self.fc2 = torch.nn.Linear(self.fc1_dim, self.fc2_dim)
+        self.lif2 = snn.Leaky(
+            beta=torch.nn.Parameter(torch.empty(self.fc2_dim, 1).uniform_(leak[0], leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.fc2_dim, 1).uniform_(thresh[0], thresh[1])),
+            learn_beta=True,
+            learn_threshold=True,
+            reset_mechanism="zero",
+            reset_delay=False,
+            spike_grad=snn.surrogate.atan(alpha=2),
+        )
+        self.fc3 = torch.nn.Linear(self.fc2_dim, self.fc3_dim)
+        self.lif3 = snn.Leaky(
+            beta=torch.nn.Parameter(torch.empty(self.fc3_dim, 1).uniform_(leak[0], leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.fc3_dim, 1).uniform_(thresh[0], thresh[1])),
+            learn_beta=True,
+            learn_threshold=True,
+            reset_mechanism="zero",
+            reset_delay=False,
+            spike_grad=snn.surrogate.atan(alpha=2),
+        )
+        self.fc_out = None  # Will be created in forward
+
+    def forward(self, input_, prev_state=None):
+        # input_: [B,2,H,W]
+        B, C, H, W = input_.shape
+        x = input_.reshape(B, C*H*W)  # [B, 2*H*W]
+
+        # Create FC layers with correct input/output sizes if not done yet
+        if isinstance(self.fc1, torch.nn.Linear) and self.fc1.in_features is None:
+            self.fc1 = torch.nn.Linear(C*H*W, self.fc1_dim)
+            self.fc_out = torch.nn.Linear(self.fc3_dim, C*H*W)
+
+        # States: [mem1, mem2, mem3] if provided
+        mem1 = mem2 = mem3 = None
+        if prev_state is not None:
+            mem1, mem2, mem3 = prev_state
+
+        # Block 1
+        x1 = self.fc1(x)
+        spk1, mem1 = self.lif1(x1, mem1)
+        if self.detach:
+            self.lif1.detach_hidden()
+        # Block 2
+        x2 = self.fc2(spk1)
+        spk2, mem2 = self.lif2(x2, mem2)
+        if self.detach:
+            self.lif2.detach_hidden()
+        # Block 3
+        x3 = self.fc3(spk2)
+        spk3, mem3 = self.lif3(x3, mem3)
+        if self.detach:
+            self.lif3.detach_hidden()
+        # Output
+        out = self.fc_out(spk3)
+        out = out.reshape(B, C, H, W).contiguous()  # [B,2,H,W]
+
+        new_state = [mem1, mem2, mem3]
+        return out, new_state
