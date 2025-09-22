@@ -329,48 +329,6 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         new_state = torch.stack([mem_out, spk_out])
 
         return spk_out, new_state
-
-""" class LIFBlockFunction(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, input_current, prev_mem, beta, threshold, hard_reset):
-        if prev_mem is None:
-            prev_mem = torch.zeros_like(input_current)
-        mem = beta * prev_mem + input_current
-        spk = (mem >= threshold).float()
-        if hard_reset:
-            mem = mem * (1 - spk)
-        else:
-            mem = mem - spk * threshold
-        return spk, mem
-
-    @staticmethod
-    def symbolic(g, input_current, prev_mem, beta, threshold, hard_reset):
-        return g.op(
-            "LeakyLIF",
-            input_current,
-            prev_mem,
-            beta,
-            threshold,
-            hard_reset_i=int(hard_reset)
-        )
-
-class LIF_forONNX(nn.Module):
-    def __init__(self, beta, threshold, hard_reset=True, learn_beta=None, learn_threshold=None, reset_mechanism=None, reset_delay=None):
-        super().__init__()
-        self.beta = beta
-        self.threshold = threshold
-        self.hard_reset = hard_reset
-        self.learn_beta = learn_beta
-        self.learn_threshold = learn_threshold
-        self.reset_mechanism = reset_mechanism
-        self.reset_delay = reset_delay
-
-    def forward(self, input_current, prev_mem):
-        return LIFBlockFunction.apply(input_current, prev_mem, self.beta, self.threshold, self.hard_reset)
-
-    def detach_hidden(self):
-        # No hidden state to detach, so just pass
-        pass """
         
         
 class SNNtorch_FCLIF(nn.Module):

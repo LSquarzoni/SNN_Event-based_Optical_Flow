@@ -627,7 +627,6 @@ class LIFFireNet(FireNet):
     w_scale_pred = 0.01
 
 
-
 class LIFFireNet_short(FireNet_short):
     """
     Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
@@ -674,11 +673,19 @@ class LIF(torch.nn.Module):
         # Per-channel learnable parameters
         self.beta = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(thresh[0], thresh[1]))
+        self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold, reset_mechanism="zero", surrogate_disable=True)
 
     def forward(self, x, prev_mem=None):
+        self.lif.threshold.data.clamp_(min=0.01)
+        
+        # x: N x channels x H x W
+        spk, mem = self.lif(x, prev_mem)
+        return spk, mem
+
+    """ def forward(self, x, prev_mem=None):
         self.threshold.data.clamp_(min=0.01)
         # Use custom operator for ONNX export
-        return torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold)
+        return torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold) """
     
     
 class LIF_Fully_Connected(FireNet_short):
