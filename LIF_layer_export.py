@@ -31,7 +31,7 @@ np.savez('exported_models/inputs.npz',
          mem=mem.cpu().numpy())
 
 # Initialize LIF model
-model = LIF(channels=channels)
+model = LIF(channels=channels, use_custom_op=True)
 model.eval()
 
 # Run model to get output

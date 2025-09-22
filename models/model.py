@@ -674,18 +674,18 @@ class LIF(torch.nn.Module):
         self.beta = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(thresh[0], thresh[1]))
         self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold, reset_mechanism="zero", surrogate_disable=True)
+        self.use_custom_op = False
 
     def forward(self, x, prev_mem=None):
-        self.lif.threshold.data.clamp_(min=0.01)
-        
-        # x: N x channels x H x W
-        spk, mem = self.lif(x, prev_mem)
-        return spk, mem
-
-    """ def forward(self, x, prev_mem=None):
-        self.threshold.data.clamp_(min=0.01)
-        # Use custom operator for ONNX export
-        return torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold) """
+        if self.use_custom_op:
+            # Use custom operator for ONNX export
+            self.threshold.data.clamp_(min=0.01)
+            return torch.ops.mynamespace.lif_leaky(x, prev_mem, self.beta, self.threshold)
+        else:
+            # Use snn.Leaky for training/inference
+            self.lif.threshold.data.clamp_(min=0.01)
+            spk, mem = self.lif(x, prev_mem)
+            return spk, mem
     
     
 class LIF_Fully_Connected(FireNet_short):
