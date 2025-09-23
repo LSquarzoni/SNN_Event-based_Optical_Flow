@@ -16,11 +16,11 @@ Repository structure:
  ┗ 📜quant_model_export.py
 ```
 The folders are quite self-explanatory: \
-/config contains the configuration files for training and evaluation of the models, \
-/dataloader has the dataloader code, \
-/loss has a python script for the loss and errors computation, \
-/models contains all the building blocks and the definition of the architectures used \
-and finally, /tools and /utils have the scripts for visualization, comparison, logging, etc...
+<span style="color:blue">**/config**</span> contains the configuration files for training and evaluation of the models, \
+<span style="color:blue">**/dataloader**</span> has the dataloader code, \
+<span style="color:blue">**/loss**</span> has a python script for the loss and errors computation, \
+<span style="color:blue">**/models**</span> contains all the building blocks and the definition of the architectures used \
+and finally, <span style="color:blue">**/tools**</span> and <span style="color:blue">**/utils**</span> have the scripts for visualization, comparison, logging, etc...
 
 The scripts present in the main folder are used to train and evaluate the models, or to print and export them for other uses. 
 
