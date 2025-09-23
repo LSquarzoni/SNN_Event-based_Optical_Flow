@@ -46,7 +46,7 @@ For a comparison reason, the whole project has been carried out keeping as most 
 
 ## Environment setup
 I personally worked using a conda environment to manage python packages. \
-The packages required to run the code are listed in the requirement.txt file, most of them require pip to be installed in the env. \
+The packages required to run the code are listed in the requirement.txt file, most of them require pip to be installed in the env. 
 
 ```
 conda create -n <env-name> python=3.11.13
@@ -55,7 +55,7 @@ conda install pip
 pip install -r requirements.txt
 ```
 
-The last command has to be called from the main folder of the repository, where requirements.txt is located, and withing the right conda env. \
+The last command has to be called from the main folder of the repository, where requirements.txt is located, and withing the right conda env. 
 
 
 
