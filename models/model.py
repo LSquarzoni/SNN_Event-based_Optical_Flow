@@ -709,12 +709,12 @@ class SNNtorch_FCLIF(torch.nn.Module):
         # FC layer sizes
         self.fc1_dim = 4
         self.fc2_dim = 256
-        self.fc3_dim = 4
-
-        self.fc1 = torch.nn.Linear(None, self.fc1_dim, bias=True)  # Placeholder, will be replaced in forward
+        self.fc3_dim = 8
+        self.fc1 = None  # Will be created in forward
+        self.fc_out = None  # Will be created in forward
         self.lif1 = snn.Leaky(
-            beta=torch.nn.Parameter(torch.empty(self.fc1_dim, 1).uniform_(leak[0], leak[1])),
-            threshold=torch.nn.Parameter(torch.empty(self.fc1_dim, 1).uniform_(thresh[0], thresh[1])),
+            beta=torch.nn.Parameter(torch.empty(self.fc1_dim).uniform_(leak[0], leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.fc1_dim).uniform_(thresh[0], thresh[1])),
             learn_beta=True,
             learn_threshold=True,
             reset_mechanism="zero",
@@ -723,8 +723,8 @@ class SNNtorch_FCLIF(torch.nn.Module):
         )
         self.fc2 = torch.nn.Linear(self.fc1_dim, self.fc2_dim)
         self.lif2 = snn.Leaky(
-            beta=torch.nn.Parameter(torch.empty(self.fc2_dim, 1).uniform_(leak[0], leak[1])),
-            threshold=torch.nn.Parameter(torch.empty(self.fc2_dim, 1).uniform_(thresh[0], thresh[1])),
+            beta=torch.nn.Parameter(torch.empty(self.fc2_dim).uniform_(leak[0], leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.fc2_dim).uniform_(thresh[0], thresh[1])),
             learn_beta=True,
             learn_threshold=True,
             reset_mechanism="zero",
@@ -733,15 +733,19 @@ class SNNtorch_FCLIF(torch.nn.Module):
         )
         self.fc3 = torch.nn.Linear(self.fc2_dim, self.fc3_dim)
         self.lif3 = snn.Leaky(
-            beta=torch.nn.Parameter(torch.empty(self.fc3_dim, 1).uniform_(leak[0], leak[1])),
-            threshold=torch.nn.Parameter(torch.empty(self.fc3_dim, 1).uniform_(thresh[0], thresh[1])),
+            beta=torch.nn.Parameter(torch.empty(self.fc3_dim).uniform_(leak[0], leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.fc3_dim).uniform_(thresh[0], thresh[1])),
             learn_beta=True,
             learn_threshold=True,
             reset_mechanism="zero",
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
-        self.fc_out = None  # Will be created in forward
+        
+    def reset_states(self):
+        self.lif1.reset_hidden()
+        self.lif2.reset_hidden()
+        self.lif3.reset_hidden()
 
     def forward(self, input_, prev_state=None):
         # input_: [B,2,H,W]
@@ -749,9 +753,10 @@ class SNNtorch_FCLIF(torch.nn.Module):
         x = input_.reshape(B, C*H*W)  # [B, 2*H*W]
 
         # Create FC layers with correct input/output sizes if not done yet
-        if isinstance(self.fc1, torch.nn.Linear) and self.fc1.in_features is None:
-            self.fc1 = torch.nn.Linear(C*H*W, self.fc1_dim)
-            self.fc_out = torch.nn.Linear(self.fc3_dim, C*H*W)
+        if self.fc1 is None:
+            self.fc1 = torch.nn.Linear(C*H*W, self.fc1_dim).to(x.device)
+        if self.fc_out is None:
+            self.fc_out = torch.nn.Linear(self.fc3_dim, C*H*W).to(x.device)
 
         # States: [mem1, mem2, mem3] if provided
         mem1 = mem2 = mem3 = None
@@ -778,4 +783,5 @@ class SNNtorch_FCLIF(torch.nn.Module):
         out = out.reshape(B, C, H, W).contiguous()  # [B,2,H,W]
 
         new_state = [mem1, mem2, mem3]
-        return out, new_state
+        
+        return {"flow": [out]}
