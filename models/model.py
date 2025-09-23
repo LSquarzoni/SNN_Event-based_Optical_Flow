@@ -703,6 +703,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
     """
     def __init__(self, leak=(0.0, 1.0), thresh=(0.0, 0.8), detach=True):
         super().__init__()
+        self.mask = True
         self.detach = detach
         # Model expects input [B,2,H,W]
         self.in_channels = 2
@@ -747,7 +748,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
         self.lif2.reset_hidden()
         self.lif3.reset_hidden()
 
-    def forward(self, input_, prev_state=None):
+    def forward(self, input_, prev_state=None, log=False):
         # input_: [B,2,H,W]
         B, C, H, W = input_.shape
         x = input_.reshape(B, C*H*W)  # [B, 2*H*W]

@@ -77,9 +77,9 @@ def test(args, config_parser):
         vis = Visualization(config, eval_id=eval_id, path_results=path_results, vis_type=vis_type)
 
     # model initialization and settings
-    model_path_dir = "mlruns/0/models/LIF_FC//model.pth" # runid: 3d2d0d3471b849abb689a8e32a2af613
+    model_path_dir = "mlruns/0/models/LIF_FC/2/model.pth" # runid: 3d2d0d3471b849abb689a8e32a2af613
     
-    model = eval(config["model"]["name"])(config["model"]).to(device)
+    model = eval(config["model"]["name"])().to(device)
     
     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
     model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
