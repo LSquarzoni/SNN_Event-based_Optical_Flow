@@ -17,9 +17,11 @@ class Visualization:
         self.img_idx = 0
         self.px = kwargs["vis"]["px"]
         self.color_scheme = "green_red"  # gray / blue_red / green_red
-        self.vis_type = vis_type
         self.last_store_ts = None  # for controlling store rate
         self.store_interval = kwargs["vis"].get("store_interval", 5.0)  # seconds
+        self.vis_type = vis_type
+        self.store_type = kwargs["vis"].get("store_type", "image")  # 'image' or 'video'
+        self.video_writers = {}
 
         if eval_id >= 0 and path_results is not None:
             self.store_dir = path_results + "results/"
@@ -66,6 +68,22 @@ class Visualization:
             events_window_npy = events_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, -1))
             cv2.namedWindow("Input Events - Eval window", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Input Events - Eval window", int(self.px), int(self.px))
+            # Show gradients visualization
+            masked_grad_img = self.flow_to_image(
+                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+            )
+            masked_grad_img = cv2.cvtColor(masked_grad_img, cv2.COLOR_RGB2BGR)
+            cv2.namedWindow("Estimated Flow - Eval window (gradients)", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Estimated Flow - Eval window (gradients)", int(self.px), int(self.px))
+            cv2.imshow("Estimated Flow - Eval window (gradients)", masked_grad_img)
+
+            # Show vectors visualization
+            masked_vec_img = self.flow_to_vector(
+                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
+            )
+            cv2.namedWindow("Estimated Flow - Eval window (vectors)", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Estimated Flow - Eval window (vectors)", int(self.px), int(self.px))
+            cv2.imshow("Estimated Flow - Eval window (vectors)", masked_vec_img)
             cv2.imshow("Input Events - Eval window", self.events_to_image(events_window_npy))
 
         # input frames
@@ -184,14 +202,10 @@ class Visualization:
         path_to = self.store_dir + sequence + "/"
         if not os.path.exists(path_to):
             os.makedirs(path_to)
-            os.makedirs(path_to + "events/")
-            os.makedirs(path_to + "events_window/")
-            os.makedirs(path_to + "flow/")
-            os.makedirs(path_to + "flow_window/")
             os.makedirs(path_to + "gtflow/")
-            os.makedirs(path_to + "frames/")
-            os.makedirs(path_to + "iwe/")
-            os.makedirs(path_to + "iwe_window/")
+            os.makedirs(path_to + "flow/")
+            os.makedirs(path_to + "masked_flow_grad/")
+            os.makedirs(path_to + "masked_flow_vec/")
             if self.store_file is not None:
                 self.store_file.close()
             self.store_file = open(path_to + "timestamps.txt", "w")
@@ -220,74 +234,83 @@ class Visualization:
             filename = path_to + "frames/%09d.png" % self.img_idx
             cv2.imwrite(filename, frames_npy[:, :, 1])
 
-        # optical flow
+        # full estimated flow (gradient-based)
         if flow is not None:
             flow = flow.detach()
             flow_h, flow_w = flow.shape[2], flow.shape[3]
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
-            if self.vis_type == "vectors":
-                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse")
-            else:
-                flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
-                flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
-            filename = path_to + "flow/%09d.png" % self.img_idx
-            cv2.imwrite(filename, flow_npy)
+            flow_grad_img = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
+            flow_grad_img = cv2.cvtColor(flow_grad_img, cv2.COLOR_RGB2BGR)
+            if self.store_type == "image":
+                filename = path_to + "flow/%09d.png" % self.img_idx
+                cv2.imwrite(filename, flow_grad_img)
+            elif self.store_type == "video":
+                if "flow" not in self.video_writers:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fps = 30
+                    shape = (flow_w, flow_h)
+                    self.video_writers["flow"] = cv2.VideoWriter(path_to + "flow/flow.mp4", fourcc, fps, shape)
+                self.video_writers["flow"].write(flow_grad_img)
 
-        # optical flow (masked)
+        # masked estimated flow (gradient and vector based)
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
             masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
-            if self.vis_type == "vectors":
-                masked_window_flow_npy = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
-                )
-            else:
-                masked_window_flow_npy = self.flow_to_image(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
-                )
-                masked_window_flow_npy = cv2.cvtColor(masked_window_flow_npy, cv2.COLOR_RGB2BGR)
-            filename = path_to + "flow_window/%09d.png" % self.img_idx
-            cv2.imwrite(filename, masked_window_flow_npy)
+            # Gradient-based visualization
+            masked_grad_img = self.flow_to_image(
+                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+            )
+            masked_grad_img = cv2.cvtColor(masked_grad_img, cv2.COLOR_RGB2BGR)
+            if self.store_type == "image":
+                filename = path_to + "masked_flow_grad/%09d.png" % self.img_idx
+                cv2.imwrite(filename, masked_grad_img)
+            elif self.store_type == "video":
+                if "masked_flow_grad" not in self.video_writers:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fps = 30
+                    shape = (masked_w, masked_h)
+                    self.video_writers["masked_flow_grad"] = cv2.VideoWriter(path_to + "masked_flow_grad/masked_flow_grad.mp4", fourcc, fps, shape)
+                self.video_writers["masked_flow_grad"].write(masked_grad_img)
 
-        # ground-truth optical flow
+            # Vector-based visualization
+            masked_vec_img = self.flow_to_vector(
+                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
+            )
+            if self.store_type == "image":
+                filename = path_to + "masked_flow_vec/%09d.png" % self.img_idx
+                cv2.imwrite(filename, masked_vec_img)
+            elif self.store_type == "video":
+                if "masked_flow_vec" not in self.video_writers:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fps = 30
+                    shape = (masked_w, masked_h)
+                    self.video_writers["masked_flow_vec"] = cv2.VideoWriter(path_to + "masked_flow_vec/masked_flow_vec.mp4", fourcc, fps, shape)
+                self.video_writers["masked_flow_vec"].write(masked_vec_img)
+
+        # ground-truth optical flow (gradient-based)
         if gtflow is not None:
             gtflow = gtflow.detach()
             gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
             gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_h, gtflow_w, 2))
-            if self.vis_type == "vectors":
-                gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
-            else:
-                gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
-                gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
-            filename = path_to + "gtflow/%09d.png" % self.img_idx
-            cv2.imwrite(filename, gtflow_npy)
-
-        # image of warped events
-        if iwe is not None:
-            iwe = iwe.detach()
-            iwe_h, iwe_w = iwe.shape[2], iwe.shape[3]
-            iwe_npy = iwe.cpu().numpy().transpose(0, 2, 3, 1).reshape((iwe_h, iwe_w, 2))
-            iwe_npy = self.events_to_image(iwe_npy)
-            filename = path_to + "iwe/%09d.png" % self.img_idx
-            cv2.imwrite(filename, iwe_npy * 255)
-
-        # image of warped events - evaluation window
-        if iwe_window is not None:
-            iwe_window = iwe_window.detach()
-            iwe_window_h, iwe_window_w = iwe_window.shape[2], iwe_window.shape[3]
-            iwe_window_npy = iwe_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((iwe_window_h, iwe_window_w, 2))
-            iwe_window_npy = self.events_to_image(iwe_window_npy)
-            filename = path_to + "iwe_window/%09d.png" % self.img_idx
-            cv2.imwrite(filename, iwe_window_npy * 255)
-
-        # store timestamps
-        if ts is not None:
-            self.store_file.write(str(ts) + "\n")
-            self.store_file.flush()
-
-        self.img_idx += 1
-        cv2.waitKey(1)
+            gtflow_img = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+            gtflow_img = cv2.cvtColor(gtflow_img, cv2.COLOR_RGB2BGR)
+            if self.store_type == "image":
+                filename = path_to + "gtflow/%09d.png" % self.img_idx
+                cv2.imwrite(filename, gtflow_img)
+            elif self.store_type == "video":
+                if "gtflow" not in self.video_writers:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fps = 30
+                    shape = (gtflow_w, gtflow_h)
+                    self.video_writers["gtflow"] = cv2.VideoWriter(path_to + "gtflow/gtflow.mp4", fourcc, fps, shape)
+                self.video_writers["gtflow"].write(gtflow_img)
+                
+    def close_videos(self):
+        """Close all video writers if in video mode."""
+        if self.store_type == "video":
+            for writer in self.video_writers.values():
+                writer.release()
 
     @staticmethod
     def flow_to_image(flow_x, flow_y):

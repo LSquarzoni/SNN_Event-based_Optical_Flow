@@ -1,11 +1,15 @@
 data:
-    path: datasets/MVSEC/h5/
+    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/  #datasets/MVSEC/h5/
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
 
 model:
     mask_output: True
+    quantization:
+        enabled: False
+        type: int8 # int8 or int16
+        PTQ: False # Post Training Quantization enabled or not
 
 metrics:
     name: [AEE, AE]  # FWL, RSAT, AEE, NEE, AE
@@ -13,10 +17,11 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [160, 160] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
-    gpu: 1
+    gpu: 0
+    output_crop: False
 
 vis:
     enabled: False
@@ -24,8 +29,9 @@ vis:
     bars: True
     activity: False
     store: True
-    store_interval: 5.0  # store every x seconds
-    type: gradients # gradients or vectors
+    store_interval: 0.0  # store every x seconds, 0.0 to disable
+    #type: gradients # gradients or vectors
+    store_type: video # video or image
 
 hot_filter:
     enabled: True
