@@ -742,11 +742,13 @@ class SNNtorch_FCLIF(torch.nn.Module):
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
+        self.states = [None, None, None]
         
     def reset_states(self):
         self.lif1.reset_hidden()
         self.lif2.reset_hidden()
         self.lif3.reset_hidden()
+        self.states = [None, None, None]
 
     def forward(self, input_, prev_state=None, log=False):
         # input_: [B,2,H,W]
@@ -759,10 +761,11 @@ class SNNtorch_FCLIF(torch.nn.Module):
         if self.fc_out is None:
             self.fc_out = torch.nn.Linear(self.fc3_dim, C*H*W).to(x.device)
 
-        # States: [mem1, mem2, mem3] if provided
-        mem1 = mem2 = mem3 = None
+        # Use prev_state if provided, otherwise use self.states
         if prev_state is not None:
             mem1, mem2, mem3 = prev_state
+        else:
+            mem1, mem2, mem3 = self.states
 
         # Block 1
         x1 = self.fc1(x)
@@ -783,6 +786,9 @@ class SNNtorch_FCLIF(torch.nn.Module):
         out = self.fc_out(spk3)
         out = out.reshape(B, C, H, W).contiguous()  # [B,2,H,W]
 
+        # Always update self.states with new membrane values
+        self.states = [mem1, mem2, mem3]
+
         new_state = [mem1, mem2, mem3]
-        
-        return {"flow": [out]}
+
+        return {"flow": [out], "state": new_state}
