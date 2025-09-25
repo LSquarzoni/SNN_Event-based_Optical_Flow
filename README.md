@@ -20,8 +20,9 @@ The folders are quite self-explanatory: \
 $${\color{orange}/config}$$ contains the configuration files for training and evaluation of the models, \
 $${\color{orange}/dataloader}$$ has the dataloader code, \
 $${\color{orange}/loss}$$ has a python script for the loss and errors computation, \
-$${\color{orange}/models}$$ contains all the building blocks and the definition of the architectures used \
-and finally, $${\color{orange}/tools}$$ and $${\color{orange}/utils}$$ have the scripts for visualization, comparison, logging, etc...
+$${\color{orange}/models}$$ contains all the building blocks and the definition of the architectures used, \
+$${\color{orange}/tools}$$ and $${\color{orange}/utils}$$ have the scripts for visualization, comparison, logging, etc... \
+Finally, $${\color{orange}/ONNX_LIF_operator}$$ holds the C++ LIF kernel that makes our LIF operator compatible with ONNX exporting.
 
 The scripts present in the main folder are used to train and evaluate the models, or to print and export them for other uses. 
 
