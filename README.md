@@ -27,25 +27,6 @@ Finally, $${\color{orange}/ONNX \space LIF \space operator}$$ holds the C++ LIF 
 The scripts present in the main folder are used to train and evaluate the models, or to print and export them for other uses. 
 
 
-
-## Original work
-
-The original code has been developed by:
-
-```
-@article{hagenaarsparedesvalles2021ssl,
-  title={Self-Supervised Learning of Event-Based Optical Flow with Spiking Neural Networks},
-  author={Hagenaars, Jesse and Paredes-Vall\'es, Federico and de Croon, Guido},
-  journal={Advances in Neural Information Processing Systems},
-  volume={34},
-  year={2021}
-}
-```
-
-For a comparison reason, the whole project has been carried out keeping as most things as possible similar to what the authors did, like training specifications, datasets and metrics.
-
-
-
 ## Environment setup
 I personally worked using a conda environment to manage python packages. \
 The packages required to run the code are listed in the requirement.txt file, most of them require pip to be installed in the env. 
@@ -68,3 +49,19 @@ The last command has to be called from the main folder of the repository, where 
 ## ONNX LIF layer generation and usage
 
 
+
+## Original work
+
+The original code has been developed by:
+
+```
+@article{hagenaarsparedesvalles2021ssl,
+  title={Self-Supervised Learning of Event-Based Optical Flow with Spiking Neural Networks},
+  author={Hagenaars, Jesse and Paredes-Vall\'es, Federico and de Croon, Guido},
+  journal={Advances in Neural Information Processing Systems},
+  volume={34},
+  year={2021}
+}
+```
+
+For a comparison reason, the whole project has been carried out keeping as most things as possible similar to what the authors did, like training specifications, datasets and metrics.
