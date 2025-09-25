@@ -10,6 +10,7 @@ Repository structure:
  ┣ 📂models
  ┣ 📂tools
  ┣ 📂utils
+ ┣ 📂ONNX_LIF_operator
  ┃ 
  ┣ 📜eval_flow.py
  ┣ 📜train_flow.py
