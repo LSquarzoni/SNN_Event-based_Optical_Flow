@@ -61,7 +61,8 @@ unzip libtorch-shared-with-deps-2.8.0+cpu.zip
 rm libtorch-shared-with-deps-2.8.0+cpu.zip
 ```
 onnxruntime needs to be installed as well: \
-from the github page (https://github.com/microsoft/onnxruntime/releases), look for the correct version compatible with your system. \
+from the github page (https://github.com/microsoft/onnxruntime/releases), look for the correct version compatible with your system. 
+
 The folder contains already the correctly built operator, but in case it was necessary to make any kind of change to it, I'll explain the way of doing it: \
 it is required to work inside the previously introduced conda environment, because at the end the operator will need to be installed inside pytorch, to make the exporting of the layer possible; 
 ```
