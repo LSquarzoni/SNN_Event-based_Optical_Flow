@@ -10,6 +10,7 @@ Repository structure:
  ┣ 📂models
  ┣ 📂tools
  ┣ 📂utils
+ ┣ 📂ONNX_LIF_operator
  ┃ 
  ┣ 📜eval_flow.py
  ┣ 📜train_flow.py
@@ -19,29 +20,11 @@ The folders are quite self-explanatory: \
 $${\color{orange}/config}$$ contains the configuration files for training and evaluation of the models, \
 $${\color{orange}/dataloader}$$ has the dataloader code, \
 $${\color{orange}/loss}$$ has a python script for the loss and errors computation, \
-$${\color{orange}/models}$$ contains all the building blocks and the definition of the architectures used \
-and finally, $${\color{orange}/tools}$$ and $${\color{orange}/utils}$$ have the scripts for visualization, comparison, logging, etc...
+$${\color{orange}/models}$$ contains all the building blocks and the definition of the architectures used, \
+$${\color{orange}/tools}$$ and $${\color{orange}/utils}$$ have the scripts for visualization, comparison, logging, etc... \
+Finally, $${\color{orange}/ONNX \space LIF \space operator}$$ holds the C++ LIF kernel that makes our LIF operator compatible with ONNX exporting.
 
 The scripts present in the main folder are used to train and evaluate the models, or to print and export them for other uses. 
-
-
-
-## Original work
-
-The original code has been developed by:
-
-```
-@article{hagenaarsparedesvalles2021ssl,
-  title={Self-Supervised Learning of Event-Based Optical Flow with Spiking Neural Networks},
-  author={Hagenaars, Jesse and Paredes-Vall\'es, Federico and de Croon, Guido},
-  journal={Advances in Neural Information Processing Systems},
-  volume={34},
-  year={2021}
-}
-```
-
-For a comparison reason, the whole project has been carried out keeping as most things as possible similar to what the authors did, like training specifications, datasets and metrics.
-
 
 
 ## Environment setup
@@ -64,5 +47,53 @@ The last command has to be called from the main folder of the repository, where 
 
 
 ## ONNX LIF layer generation and usage
+The generation of a new operator in ONNX requires following specific steps and to set the environment correctly. \
+In my specific case I worked on Ubuntu 24.04.3 LTS. It is mandatory to match the libtorch and pytorch versions in the envirorments; \
+For example, if you want to use the same versions as me:
+```
+// pytorch
+conda activate <env-name>
+pip install torch==2.8.0+cpu
 
+// libtorch
+wget https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.8.0%2Bcpu.zip
+unzip libtorch-shared-with-deps-2.8.0+cpu.zip
+rm libtorch-shared-with-deps-2.8.0+cpu.zip
+```
+onnxruntime needs to be installed as well: \
+from the github page (https://github.com/microsoft/onnxruntime/releases), look for the correct version compatible with your system. 
 
+The folder contains already the correctly built operator, but in case it was necessary to make any kind of change to it, I'll explain the way of doing it: \
+it is required to work inside the previously introduced conda environment, because at the end the operator will need to be installed inside pytorch, to make the exporting of the layer possible; 
+```
+cd /ONNX_LIF_operator/build/
+rm -rf *
+cmake ..
+make
+```
+This will allow to re-built the kernel located in /ONNX_LIF_operator/src/lif_op.cpp. 
+
+To install it into your pytorch and onnx libraries, you will have to call the setup script; inside this file it is important to change the path to your specific libraries' directories.
+```
+conda activate <env-name>
+cd /ONNX_LIF_operator/
+python setup.py install
+```
+At this point, the kernel will work fine, if correctly called within the python script of your model. \
+Specifically, you will have to use the generated kernel instead of the snn torch module at the moment of exportation to ONNX.
+
+## Original work
+
+The original code has been developed by:
+
+```
+@article{hagenaarsparedesvalles2021ssl,
+  title={Self-Supervised Learning of Event-Based Optical Flow with Spiking Neural Networks},
+  author={Hagenaars, Jesse and Paredes-Vall\'es, Federico and de Croon, Guido},
+  journal={Advances in Neural Information Processing Systems},
+  volume={34},
+  year={2021}
+}
+```
+
+For a comparison reason, the whole project has been carried out keeping as most things as possible similar to what the authors did, like training specifications, datasets and metrics.
