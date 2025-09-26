@@ -9,7 +9,8 @@ from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
 from loss.flow import EventWarping
 from models.model import (
-    SNNtorch_FCLIF
+    SNNtorch_FCLIF,
+    SNNtorch_ConvFCLIF
 )
 from utils.gradients import get_grads
 from utils.utils import load_model, save_csv, save_diff, save_model
@@ -107,7 +108,7 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIF_FC/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIF_FC_3l/")
                         os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {

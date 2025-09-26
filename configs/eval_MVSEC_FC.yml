@@ -6,7 +6,6 @@ data:
 
 model:
     mask_output: True
-    name: SNNtorch_FCLIF # fully connected SNN
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     num_bins: 2
@@ -17,7 +16,7 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [32, 32] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [8, 8] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
     gpu: 0

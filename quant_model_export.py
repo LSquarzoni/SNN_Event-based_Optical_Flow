@@ -12,7 +12,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short, LIF, LIF_Fully_Connected
+from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short, LIF
 from utils.utils import load_model
 
 def calibrate_model(calibration_loader, quant_model, device, num_batches=50):

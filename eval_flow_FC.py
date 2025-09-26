@@ -16,7 +16,8 @@ from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
 from loss.flow import AEE, NEE, AE
 from models.model import (
-    SNNtorch_FCLIF
+    SNNtorch_FCLIF,
+    SNNtorch_ConvFCLIF
 )
 from utils.iwe import compute_pol_iwe
 from utils.utils import load_model, create_model_dir
@@ -78,7 +79,9 @@ def test(args, config_parser):
 
     # model initialization and settings
     #model_path_dir = "mlruns/0/models/LIF_FC/2/model.pth" # runid: 3d2d0d3471b849abb689a8e32a2af613
-    model_path_dir = "mlruns/0/models/LIF_FC//model.pth" # runid: 0a10ae23f6724228bebfd312a59fcbc0
+    #model_path_dir = "mlruns/0/models/LIF_FC/3/model.pth" # runid: 0a10ae23f6724228bebfd312a59fcbc0
+    model_path_dir = "mlruns/0/models/LIF_FC_3l//model.pth" # runid:
+    model_path_dir = "mlruns/0/models/LIF_Conv_FC//model.pth" # runid:
     
     model = eval(config["model"]["name"])().to(device)
     
