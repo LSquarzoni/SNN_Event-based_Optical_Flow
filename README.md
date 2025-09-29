@@ -48,11 +48,12 @@ The last command has to be called from the main folder of the repository, where 
 
 ## ONNX LIF layer generation and usage
 The generation of a new operator in ONNX requires following specific steps and to set the environment correctly. \
-In my specific case I worked on Ubuntu 24.04.3 LTS. It is mandatory to match the libtorch and pytorch versions in the envirorments; \
+In my specific case I worked on Ubuntu 24.04.3 LTS. It is mandatory to match the libtorch and pytorch versions in the envirorments; to be sure not to get any compatibility issue, I personally worked in a separate conda environment, base don python 3.9. \
 For example, if you want to use the same versions as me:
 ```
 // pytorch
-conda activate <env-name>
+conda create -n <env-name2> python=3.9
+conda activate <env-name2>
 pip install torch==2.8.0+cpu
 
 // libtorch
@@ -75,7 +76,7 @@ This will allow to re-built the kernel located in /ONNX_LIF_operator/src/lif_op.
 
 To install it into your pytorch and onnx libraries, you will have to call the setup script; inside this file it is important to change the path to your specific libraries' directories.
 ```
-conda activate <env-name>
+conda activate <env-name2>
 cd /ONNX_LIF_operator/
 python setup.py install
 ```
