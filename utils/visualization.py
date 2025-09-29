@@ -434,10 +434,10 @@ class Visualization:
             step = 6
             scale = 750.0
             min_magnitude = 0.01
-            thickness = 1
+            thickness = 3
             tip_length = 0.3
         else:
-            thickness = 1
+            thickness = 3
             tip_length = 0.3
 
         # Support both (H, W) and (H, W, 1) shapes
