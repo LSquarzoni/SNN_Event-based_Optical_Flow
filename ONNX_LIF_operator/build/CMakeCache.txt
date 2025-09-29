@@ -216,7 +216,7 @@ CMAKE_TAPI:FILEPATH=CMAKE_TAPI-NOTFOUND
 CMAKE_VERBOSE_MAKEFILE:BOOL=FALSE
 
 //The directory containing a CMake configuration file for Caffe2.
-Caffe2_DIR:PATH=/home/lorenzo/libtorch/share/cmake/Caffe2
+Caffe2_DIR:PATH=/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/share/cmake/Caffe2
 
 //The directory containing a CMake configuration file for MKLDNN.
 MKLDNN_DIR:PATH=MKLDNN_DIR-NOTFOUND
@@ -234,16 +234,16 @@ ONNX_LIF_operator_IS_TOP_LEVEL:STATIC=ON
 ONNX_LIF_operator_SOURCE_DIR:STATIC=/home/lorenzo/event_flow/ONNX_LIF_operator
 
 //Path to a library.
-TORCH_LIBRARY:FILEPATH=/home/lorenzo/libtorch/lib/libtorch.so
+TORCH_LIBRARY:FILEPATH=/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/lib/libtorch.so
 
 //Path to a library.
-c10_LIBRARY:FILEPATH=/home/lorenzo/libtorch/lib/libc10.so
+c10_LIBRARY:FILEPATH=/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/lib/libc10.so
 
 //Path to a library.
-kineto_LIBRARY:FILEPATH=/home/lorenzo/libtorch/lib/libkineto.a
+kineto_LIBRARY:FILEPATH=kineto_LIBRARY-NOTFOUND
 
 //Dependencies for the target
-lif_op_LIB_DEPENDS:STATIC=general;onnxruntime;general;torch;torch_library;/home/lorenzo/libtorch/lib/libc10.so;/home/lorenzo/libtorch/lib/libkineto.a;
+lif_op_LIB_DEPENDS:STATIC=general;torch;torch_library;/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/lib/libc10.so;
 
 
 ########################
@@ -398,7 +398,7 @@ CMAKE_UNAME:INTERNAL=/usr/bin/uname
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
 //Details about finding Torch
-FIND_PACKAGE_MESSAGE_DETAILS_Torch:INTERNAL=[/home/lorenzo/libtorch/lib/libtorch.so][/home/lorenzo/libtorch/include;/home/lorenzo/libtorch/include/torch/csrc/api/include][v()]
+FIND_PACKAGE_MESSAGE_DETAILS_Torch:INTERNAL=[/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/lib/libtorch.so][/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/include;/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/include/torch/csrc/api/include][v()]
 //linker supports push/pop state
 _CMAKE_LINKER_PUSHPOP_STATE_SUPPORTED:INTERNAL=TRUE
 

@@ -1,4 +1,3 @@
-#include <onnxruntime_cxx_api.h>
 #include <torch/script.h>
 #include <ATen/ATen.h>
 #include <tuple> 
