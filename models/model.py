@@ -674,27 +674,47 @@ class LIF(torch.nn.Module):
         # Per-channel learnable parameters
         self.beta = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = torch.nn.Parameter(torch.empty(channels, 1, 1).uniform_(thresh[0], thresh[1]))
+        # Internal membrane potential (non-learnable state). Register as buffer so it's saved with state_dict.
+        # Initialized as None; will be created on first forward with the same shape as the input.
+        self.register_buffer('mem', None)
         self.lif = snn.Leaky(beta=self.beta, threshold=self.threshold, reset_mechanism="zero", surrogate_disable=True)
         self.use_custom_op = use_custom_op
 
-    def forward(self, x, prev_mem=None):
+    def forward(self, x):
+        """
+        Forward uses an internal membrane potential buffer `self.mem`.
+        - Input: x (tensor)
+        - Output: spk (tensor)
+
+        The internal `self.mem` is created/reset to zeros with the same shape as `x` if it is None
+        or if its shape does not match `x` (e.g., different batch size).
+        After computing the new membrane potential, it is stored in `self.mem` and only the
+        spikes tensor `spk` is returned.
+        """
+        # Ensure internal mem exists and matches input shape
+        if self.mem is None or self.mem.shape != x.shape:
+            # Initialize membrane potential to 0.1 on same device/dtype as x
+            self.mem = torch.full_like(x, 0.1)
+
         if self.use_custom_op:
             # Use custom operator for ONNX export
-            self.threshold.data.clamp_(min=0.01)
-            if prev_mem is None:
-                prev_mem = torch.zeros_like(x)
-
-            out = torch.ops.SNN_implementation.LIF(x, prev_mem, self.beta, self.threshold)
+            out = torch.ops.SNN_implementation.LIF(x, self.mem, self.beta, self.threshold)
             spk = out[0]  # shape [N, C, H, W]
             mem = out[1]  # shape [N, C, H, W]
 
-            prev_mem = mem
-            return spk, mem
+            # Update internal membrane
+            self.mem = mem
+
+            return spk
         else:
             # Use snn.Leaky for training/inference
             self.lif.threshold.data.clamp_(min=0.01)
-            spk, mem = self.lif(x, prev_mem)
-            return spk, mem
+            spk, mem = self.lif(x, self.mem)
+
+            # Update internal membrane
+            self.mem = mem
+
+            return spk
     
     
 class SNNtorch_FCLIF(torch.nn.Module):

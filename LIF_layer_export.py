@@ -23,12 +23,10 @@ os.makedirs("exported_models", exist_ok=True)
 
 # Create dummy input (N x channels x H x W)
 dummy_input = torch.randn(batch_size, channels, height, width)
-dummy_mem = torch.zeros(batch_size, channels, height, width)
 
 # Save example input for reference
 np.savez('exported_models/inputs.npz',
-         input=dummy_input.cpu().numpy(),
-         mem=dummy_mem.cpu().numpy())
+         input=dummy_input.cpu().numpy())
 
 # Initialize LIF model
 model = LIF(channels=channels, use_custom_op=True)
@@ -36,31 +34,25 @@ model.eval()
 
 # Run model to get output
 with torch.no_grad():
-    spk, mem = model(dummy_input, dummy_mem)
+    spk = model(dummy_input)
 
 # Save example output for reference
 np.savez('exported_models/outputs.npz',
-         spk=spk.cpu().numpy(),
-         mem=mem.cpu().numpy())
+         spk=spk.cpu().numpy())
 
 # Export to ONNX
 onnx_path = "exported_models/network.onnx"
 onnx_simpler_path = "exported_models/network_simpler.onnx"
 torch.onnx.export(
     model,
-    (dummy_input, dummy_mem),  # LIF expects (x, prev_mem)
+    (dummy_input),
     onnx_path,
     export_params=True,
     opset_version=11,
     do_constant_folding=True,
-    input_names=['x', 'prev_mem'],
-    output_names=['spk', 'mem'],
-    custom_opsets={"SNN_implementation": 11},
-    # dynamic_axes={
-    #     'x': {0: 'batch_size'},
-    #     'spk': {0: 'batch_size'},
-    #     'mem': {0: 'batch_size'}
-    # }
+    input_names=['x'],
+    output_names=['spk'],
+    custom_opsets={"SNN_implementation": 11}
 )
 
 # Verify the exported model
