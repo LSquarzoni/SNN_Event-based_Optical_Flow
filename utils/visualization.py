@@ -79,7 +79,7 @@ class Visualization:
 
             # Show vectors visualization
             masked_vec_img = self.flow_to_vector(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
+                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse", center=True
             )
             cv2.namedWindow("Estimated Flow - Eval window (vectors)", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Estimated Flow - Eval window (vectors)", int(self.px), int(self.px))
@@ -103,7 +103,7 @@ class Visualization:
             flow_h, flow_w = flow.shape[2], flow.shape[3]
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
             if self.vis_type == "vectors":
-                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse")
+                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse", center=True)
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
@@ -118,7 +118,7 @@ class Visualization:
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
             if self.vis_type == "vectors":
                 masked_window_flow_npy = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse", center=True
                 )
             else:
                 masked_window_flow_npy = self.flow_to_image(
@@ -135,7 +135,7 @@ class Visualization:
             gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
             gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_h, gtflow_w, 2))
             if self.vis_type == "vectors":
-                gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
+                gtflow_npy = self.flow_to_vector(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1], center=True)
             else:
                 gtflow_npy = self.flow_to_image(gtflow_npy[:, :, 0], gtflow_npy[:, :, 1])
                 gtflow_npy = cv2.cvtColor(gtflow_npy, cv2.COLOR_RGB2BGR)
@@ -201,15 +201,27 @@ class Visualization:
         # check if new sequence
         path_to = self.store_dir + sequence + "/"
         if not os.path.exists(path_to):
+            # If we have active video writers from a previous sequence, close them
+            if self.video_writers:
+                for _w in self.video_writers.values():
+                    try:
+                        _w.release()
+                    except Exception:
+                        pass
+                self.video_writers.clear()
+
             os.makedirs(path_to)
             os.makedirs(path_to + "gtflow/")
             os.makedirs(path_to + "flow/")
             os.makedirs(path_to + "masked_flow_grad/")
             os.makedirs(path_to + "masked_flow_vec/")
+            os.makedirs(path_to + "stitched/")
             if self.store_file is not None:
                 self.store_file.close()
             self.store_file = open(path_to + "timestamps.txt", "w")
             self.img_idx = 0
+            # reset store timestamp so first frames of the new sequence are stored immediately
+            self.last_store_ts = None
 
         # input events
         event_image = np.zeros((height, width))
@@ -226,6 +238,12 @@ class Visualization:
             events_window_npy = self.events_to_image(events_window_npy)
             filename = path_to + "events_window/%09d.png" % self.img_idx
             cv2.imwrite(filename, events_window_npy * 255)
+
+        # Prepare holders for stitched output (four panels)
+        flow_frame = None
+        masked_grad_frame = None
+        masked_vec_frame = None
+        gtflow_frame = None
 
         # input frames
         if frames is not None:
@@ -252,6 +270,9 @@ class Visualization:
                     self.video_writers["flow"] = cv2.VideoWriter(path_to + "flow/flow.mp4", fourcc, fps, shape)
                 self.video_writers["flow"].write(flow_grad_img)
 
+            # store frame for stitched output
+            flow_frame = flow_grad_img
+
         # masked estimated flow (gradient and vector based)
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
@@ -275,7 +296,7 @@ class Visualization:
 
             # Vector-based visualization
             masked_vec_img = self.flow_to_vector(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse"
+                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse", center=True
             )
             if self.store_type == "image":
                 filename = path_to + "masked_flow_vec/%09d.png" % self.img_idx
@@ -287,6 +308,10 @@ class Visualization:
                     shape = (masked_w, masked_h)
                     self.video_writers["masked_flow_vec"] = cv2.VideoWriter(path_to + "masked_flow_vec/masked_flow_vec.mp4", fourcc, fps, shape)
                 self.video_writers["masked_flow_vec"].write(masked_vec_img)
+
+            # store frames for stitched output
+            masked_grad_frame = masked_grad_img
+            masked_vec_frame = masked_vec_img
 
         # ground-truth optical flow (gradient-based)
         if gtflow is not None:
@@ -305,6 +330,56 @@ class Visualization:
                     shape = (gtflow_w, gtflow_h)
                     self.video_writers["gtflow"] = cv2.VideoWriter(path_to + "gtflow/gtflow.mp4", fourcc, fps, shape)
                 self.video_writers["gtflow"].write(gtflow_img)
+
+            # store frame for stitched output
+            gtflow_frame = gtflow_img
+
+        # Create stitched output (four panels side-by-side). If any panel is missing, replace it with a black placeholder.
+        frames_to_stitch = [gtflow_frame, flow_frame, masked_grad_frame, masked_vec_frame]
+        if any(f is not None for f in frames_to_stitch):
+            # compute target heights/widths
+            present = [f for f in frames_to_stitch if f is not None]
+            widths = [f.shape[1] for f in present]
+            heights = [f.shape[0] for f in present]
+            max_h = max(heights)
+            default_w = max(widths) if widths else 1
+
+            padded = []
+            for f in frames_to_stitch:
+                if f is None:
+                    pad = np.zeros((max_h, default_w, 3), dtype=np.uint8)
+                    padded.append(pad)
+                else:
+                    h, w = f.shape[0], f.shape[1]
+                    if h < max_h:
+                        pad = np.zeros((max_h, w, 3), dtype=np.uint8)
+                        y = (max_h - h) // 2
+                        pad[y : y + h, :w] = f
+                        padded.append(pad)
+                    else:
+                        padded.append(f)
+
+            stitched_img = cv2.hconcat(padded)
+
+            # Some codecs require even frame dimensions. Pad to even width/height if needed.
+            sh, sw = stitched_img.shape[0], stitched_img.shape[1]
+            pad_bottom = 0 if (sh % 2 == 0) else 1
+            pad_right = 0 if (sw % 2 == 0) else 1
+            if pad_bottom or pad_right:
+                stitched_img = cv2.copyMakeBorder(stitched_img, 0, pad_bottom, 0, pad_right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+                sh, sw = stitched_img.shape[0], stitched_img.shape[1]
+
+            if self.store_type == "image":
+                filename = path_to + "stitched/%09d.png" % self.img_idx
+                cv2.imwrite(filename, stitched_img)
+            elif self.store_type == "video":
+                # VideoWriter expects (width, height)
+                if "stitched" not in self.video_writers:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fps = 30
+                    shape = (sw, sh)
+                    self.video_writers["stitched"] = cv2.VideoWriter(path_to + "stitched/stitched.mp4", fourcc, fps, shape)
+                self.video_writers["stitched"].write(stitched_img)
                 
     def close_videos(self):
         """Close all video writers if in video mode."""
@@ -341,7 +416,7 @@ class Visualization:
         return (255 * flow_rgb).astype(np.uint8)
     
     @staticmethod
-    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2):
+    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2, center=False):
         """
         Use the optical flow to generate a matrix of vectors representing the direction 
         and magnitude of the optical flows.
@@ -353,39 +428,110 @@ class Visualization:
         :param min_magnitude: minimum magnitude to draw a vector
         :return img: [H x W x 3] vector-encoded optical flow image
         """
-        
+        # center: if True, draw a single arrow at the image center corresponding
+        # to the average flow over the whole frame (masked by min_magnitude)
         if type == "sparse":
-            step = 6           
-            scale = 750.0      
+            step = 6
+            scale = 750.0
             min_magnitude = 0.01
-            arrow_color = (255, 255, 255)
-            thickness = 1
+            thickness = 3
             tip_length = 0.3
         else:
-            arrow_color = (255, 255, 255)
-            thickness = 1
+            thickness = 3
             tip_length = 0.3
-            
-        H, W = flow_x.shape
-        
+
+        # Support both (H, W) and (H, W, 1) shapes
+        if flow_x.ndim == 3:
+            H, W = flow_x.shape[0], flow_x.shape[1]
+            fx = flow_x[:, :, 0]
+            fy = flow_y[:, :, 0]
+        else:
+            H, W = flow_x.shape
+            fx = flow_x
+            fy = flow_y
+
         # Create a black image
         img = np.zeros((H, W, 3), dtype=np.uint8)
-        
+
+        # Precompute magnitude and angular mapping for color coding
+        mag = np.sqrt(fx ** 2 + fy ** 2)
+        min_mag = float(np.min(mag))
+        mag_range = float(np.max(mag) - min_mag)
+
+        if center:
+            # compute average flow over pixels above min_magnitude
+            mask = mag >= min_magnitude
+            if not np.any(mask):
+                # nothing significant to draw
+                return img
+            avg_dx = float(np.mean(fx[mask]))
+            avg_dy = float(np.mean(fy[mask]))
+            avg_mag = float(np.sqrt(avg_dx ** 2 + avg_dy ** 2))
+
+            # center coordinates (x=j, y=i)
+            cx = W // 2
+            cy = H // 2
+
+            # compute relative length: scale the arrow length according to avg_mag / max_mag
+            max_mag = float(np.max(mag))
+            if max_mag <= 0 or avg_mag == 0:
+                return img
+
+            # relative fraction (0..1)
+            frac = np.clip(avg_mag / max_mag, 0.0, 1.0)
+
+            # maximum drawable length (pixels) -- keep it within frame
+            max_len = int(0.45 * min(H, W))
+
+            # arrow length in pixels proportional to fraction and scaled by max_len
+            length_px = int(frac * max_len)
+
+            # normalize direction and compute endpoint
+            dir_x = avg_dx / avg_mag
+            dir_y = avg_dy / avg_mag
+            end_x = int(cx + dir_x * length_px)
+            end_y = int(cy + dir_y * length_px)
+
+            # compute color via same HSV mapping as flow_to_image
+            ang = np.arctan2(avg_dy, avg_dx) + np.pi
+            ang *= 1.0 / np.pi / 2.0
+            hsv = np.array([ang, 1.0, (avg_mag - min_mag)])
+            if mag_range != 0.0:
+                hsv[2] = hsv[2] / mag_range
+            rgb = matplotlib.colors.hsv_to_rgb(hsv)
+            # convert to BGR 0-255 ints for OpenCV
+            arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
+
+            cv2.arrowedLine(img, (cx, cy), (end_x, end_y), arrow_color, thickness, tipLength=tip_length)
+            return img
+
         # Sample the flow fields
         for i in range(0, H, step):
             for j in range(0, W, step):
-                dx = flow_x[i, j]
-                dy = flow_y[i, j]
+                dx = fx[i, j]
+                dy = fy[i, j]
                 mag = np.sqrt(dx**2 + dy**2)
 
                 if mag < min_magnitude:
                     continue  # skip drawing short vectors
-                
+
                 end_x = int(j + dx * scale)
                 end_y = int(i + dy * scale)
 
+                # compute color from angle/magnitude like flow_to_image
+                ang = np.arctan2(dy, dx) + np.pi
+                ang *= 1.0 / np.pi / 2.0
+                v = mag - min_mag
+                if mag_range != 0.0:
+                    v = v / mag_range
+                else:
+                    v = 0.0
+                hsv = np.array([ang, 1.0, v])
+                rgb = matplotlib.colors.hsv_to_rgb(hsv)
+                arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
+
                 # Draw arrow
-                cv2.arrowedLine(img, (j, i), (end_x, end_y), (255, 255, 255), 1, tipLength=0.3)
+                cv2.arrowedLine(img, (j, i), (end_x, end_y), arrow_color, thickness, tipLength=tip_length)
 
         return img
 
