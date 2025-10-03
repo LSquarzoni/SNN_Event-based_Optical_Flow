@@ -6,7 +6,7 @@ import torch
 from torch.optim import *
 
 from configs.parser import YAMLParser
-from dataloader.h5 import H5Loader
+from dataloader import H5Loader, PatchH5Loader
 from loss.flow import EventWarping
 from models.model import (
     SNNtorch_FCLIF,
@@ -52,7 +52,12 @@ def train(args, config_parser):
         vis = Visualization(config)
 
     # data loader
-    data = H5Loader(config, config["model"]["num_bins"], config["model"]["round_encoding"])
+    # Ensure resolution used by the loss matches the patch size (e.g., 8x8)
+    patch_size = config["loader"].get("patch_size", [8, 8])
+    config["loader"]["resolution"] = patch_size
+    config["loader"].setdefault("patch_stride", patch_size)
+
+    data = PatchH5Loader(config, config["model"]["num_bins"], config["model"].get("round_encoding", False))
     dataloader = torch.utils.data.DataLoader(
         data,
         drop_last=True,

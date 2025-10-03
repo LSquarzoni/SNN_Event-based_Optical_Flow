@@ -4,8 +4,8 @@ data:
     #path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
     path: /scratch/msc25h1/training/ # path to dataset in my scratch
     mode: events # events
-    window: 1000 # events
-    window_loss: 10000 # events
+    window: 200 # events
+    window_loss: 2000 # events
 
 model:
     name: SNNtorch_FCLIF # fully connected SNN
@@ -27,7 +27,7 @@ optimizer:
 loader:
     n_epochs: 100
     batch_size: 8
-    resolution: [128, 128] # H x W
+    resolution: [8, 8] # H x W
     std_resolution: [128, 128]
     augment: ["Horizontal", "Vertical", "Polarity"]
     augment_prob: [0.5, 0.5, 0.5]
