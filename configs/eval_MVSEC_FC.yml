@@ -12,7 +12,7 @@ model:
 
 metrics:
     name: [AEE, AE]  # AEE, NEE, AE
-    flow_scaling: 128
+    flow_scaling: 8
 
 loader:
     batch_size: 1

@@ -20,7 +20,7 @@ model:
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
     num_bins: 2
-    base_num_channels: 16
+    base_num_channels: 32
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
 
@@ -38,7 +38,7 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [64, 64] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
     gpu: 0

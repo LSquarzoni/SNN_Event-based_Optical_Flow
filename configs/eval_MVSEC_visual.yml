@@ -6,7 +6,10 @@ data:
 
 model:
     mask_output: True
-    quantization:
+    encoding: cnt # voxel/cnt
+    round_encoding: False # for voxel encoding
+    num_bins: 2
+    quantization: 
         enabled: False
         type: int8 # int8 or int16
         PTQ: False # Post Training Quantization enabled or not

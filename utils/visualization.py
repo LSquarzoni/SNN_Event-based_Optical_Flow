@@ -68,22 +68,36 @@ class Visualization:
             events_window_npy = events_window.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, -1))
             cv2.namedWindow("Input Events - Eval window", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Input Events - Eval window", int(self.px), int(self.px))
-            # Show gradients visualization
-            masked_grad_img = self.flow_to_image(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
-            )
-            masked_grad_img = cv2.cvtColor(masked_grad_img, cv2.COLOR_RGB2BGR)
-            cv2.namedWindow("Estimated Flow - Eval window (gradients)", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("Estimated Flow - Eval window (gradients)", int(self.px), int(self.px))
-            cv2.imshow("Estimated Flow - Eval window (gradients)", masked_grad_img)
+            # Show flow visualizations only if masked flow is provided
+            if masked_window_flow is not None:
+                mflow = masked_window_flow.detach()
+                m_h, m_w = mflow.shape[2], mflow.shape[3]
+                masked_window_flow_npy = mflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((m_h, m_w, 2))
+                # Show gradients visualization
+                masked_grad_img = self.flow_to_image(
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                )
+                masked_grad_img = cv2.cvtColor(masked_grad_img, cv2.COLOR_RGB2BGR)
+                cv2.namedWindow("Estimated Flow - Eval window (gradients)", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("Estimated Flow - Eval window (gradients)", int(self.px), int(self.px))
+                cv2.imshow("Estimated Flow - Eval window (gradients)", masked_grad_img)
 
-            # Show vectors visualization
-            masked_vec_img = self.flow_to_vector(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse", center=True
-            )
-            cv2.namedWindow("Estimated Flow - Eval window (vectors)", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("Estimated Flow - Eval window (vectors)", int(self.px), int(self.px))
-            cv2.imshow("Estimated Flow - Eval window (vectors)", masked_vec_img)
+                # Show vectors visualization (overlay GT average arrow if available)
+                gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
+                gt_y = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 1] if gtflow is not None else None
+                masked_vec_img = self.flow_to_vector(
+                    masked_window_flow_npy[:, :, 0],
+                    masked_window_flow_npy[:, :, 1],
+                    type="sparse",
+                    center=True,
+                    gt_flow_x=gt_x,
+                    gt_flow_y=gt_y,
+                    overlay_gt=True if gtflow is not None else False,
+                    fixed_length=70,
+                )
+                cv2.namedWindow("Estimated Flow - Eval window (vectors)", cv2.WINDOW_NORMAL)
+                cv2.resizeWindow("Estimated Flow - Eval window (vectors)", int(self.px), int(self.px))
+                cv2.imshow("Estimated Flow - Eval window (vectors)", masked_vec_img)
             cv2.imshow("Input Events - Eval window", self.events_to_image(events_window_npy))
 
         # input frames
@@ -103,7 +117,19 @@ class Visualization:
             flow_h, flow_w = flow.shape[2], flow.shape[3]
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
             if self.vis_type == "vectors":
-                flow_npy = self.flow_to_vector(flow_npy[:, :, 0], flow_npy[:, :, 1], type="sparse", center=True)
+                # If ground-truth exists, overlay its average vector as a white arrow behind the predicted one
+                gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
+                gt_y = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 1] if gtflow is not None else None
+                flow_npy = self.flow_to_vector(
+                    flow_npy[:, :, 0],
+                    flow_npy[:, :, 1],
+                    type="sparse",
+                    center=True,
+                    gt_flow_x=gt_x,
+                    gt_flow_y=gt_y,
+                    overlay_gt=True if gtflow is not None else False,
+                    fixed_length=70,
+                )
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
@@ -117,8 +143,18 @@ class Visualization:
             masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
             if self.vis_type == "vectors":
+                # Overlay white average GT arrow if ground-truth is available
+                gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
+                gt_y = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 1] if gtflow is not None else None
                 masked_window_flow_npy = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse", center=True
+                    masked_window_flow_npy[:, :, 0],
+                    masked_window_flow_npy[:, :, 1],
+                    type="sparse",
+                    center=True,
+                    gt_flow_x=gt_x,
+                    gt_flow_y=gt_y,
+                    overlay_gt=True if gtflow is not None else False,
+                    fixed_length=70,
                 )
             else:
                 masked_window_flow_npy = self.flow_to_image(
@@ -295,8 +331,17 @@ class Visualization:
                 self.video_writers["masked_flow_grad"].write(masked_grad_img)
 
             # Vector-based visualization
+            gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
+            gt_y = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 1] if gtflow is not None else None
             masked_vec_img = self.flow_to_vector(
-                masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], type="sparse", center=True
+                masked_window_flow_npy[:, :, 0],
+                masked_window_flow_npy[:, :, 1],
+                type="sparse",
+                center=True,
+                gt_flow_x=gt_x,
+                gt_flow_y=gt_y,
+                overlay_gt=True if gtflow is not None else False,
+                fixed_length=70,
             )
             if self.store_type == "image":
                 filename = path_to + "masked_flow_vec/%09d.png" % self.img_idx
@@ -416,7 +461,7 @@ class Visualization:
         return (255 * flow_rgb).astype(np.uint8)
     
     @staticmethod
-    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2, center=False):
+    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2, center=False, gt_flow_x=None, gt_flow_y=None, overlay_gt=True, fixed_length=None):
         """
         Use the optical flow to generate a matrix of vectors representing the direction 
         and magnitude of the optical flows.
@@ -473,26 +518,86 @@ class Visualization:
             cy = H // 2
 
             # compute relative length: scale the arrow length according to avg_mag / max_mag
-            max_mag = float(np.max(mag))
-            if max_mag <= 0 or avg_mag == 0:
+            max_mag_pred = float(np.max(mag))
+            # Optionally include GT in shared scaling reference
+            max_mag_gt = 0.0
+            if overlay_gt and gt_flow_x is not None and gt_flow_y is not None:
+                if gt_flow_x.ndim == 3:
+                    gx = gt_flow_x[:, :, 0]
+                    gy = gt_flow_y[:, :, 0]
+                else:
+                    gx = gt_flow_x
+                    gy = gt_flow_y
+                mag_gt_full = np.sqrt(gx ** 2 + gy ** 2)
+                max_mag_gt = float(np.max(mag_gt_full))
+            combined_max = max(max_mag_pred, max_mag_gt)
+
+            if combined_max <= 0 or avg_mag == 0:
                 return img
 
             # relative fraction (0..1)
-            frac = np.clip(avg_mag / max_mag, 0.0, 1.0)
+            frac = np.clip(avg_mag / combined_max, 0.0, 1.0)
 
             # maximum drawable length (pixels) -- keep it within frame
             max_len = int(0.45 * min(H, W))
 
-            # arrow length in pixels proportional to fraction and scaled by max_len
-            length_px = int(frac * max_len)
+            # If a fixed length is requested, use it; otherwise use fraction of max_len
+            if fixed_length is not None:
+                length_px = int(fixed_length)
+            else:
+                # arrow length in pixels proportional to fraction and scaled by max_len
+                length_px = int(frac * max_len)
 
-            # normalize direction and compute endpoint
-            dir_x = avg_dx / avg_mag
-            dir_y = avg_dy / avg_mag
+            # normalize direction and compute endpoint (invert arrow direction)
+            inv_avg_dx = -avg_dx
+            inv_avg_dy = -avg_dy
+            dir_x = inv_avg_dx / avg_mag
+            dir_y = inv_avg_dy / avg_mag
             end_x = int(cx + dir_x * length_px)
             end_y = int(cy + dir_y * length_px)
 
+            # If requested, draw GT average arrow behind predicted one (white)
+            if overlay_gt and gt_flow_x is not None and gt_flow_y is not None:
+                # compute GT average with same thresholding
+                if gt_flow_x.ndim == 3:
+                    gx = gt_flow_x[:, :, 0]
+                    gy = gt_flow_y[:, :, 0]
+                else:
+                    gx = gt_flow_x
+                    gy = gt_flow_y
+                mag_gt = np.sqrt(gx ** 2 + gy ** 2)
+                # Prefer to mask GT using the predicted mask if shapes align, so
+                # we compute the GT average only over pixels where the predicted
+                # flow has support. Otherwise fall back to GT magnitude threshold.
+                if mag.shape == mag_gt.shape:
+                    mask_shared = mask & (mag_gt >= min_magnitude)
+                else:
+                    mask_shared = mag_gt >= min_magnitude
+                if np.any(mask_shared):
+                    avg_gx = float(np.mean(gx[mask_shared]))
+                    avg_gy = float(np.mean(gy[mask_shared]))
+                    avg_mag_gt = float(np.sqrt(avg_gx ** 2 + avg_gy ** 2))
+                    if avg_mag_gt > 0:
+                        # scale using the same combined_max
+                        frac_gt = np.clip(avg_mag_gt / combined_max, 0.0, 1.0)
+                        if fixed_length is not None:
+                            length_px_gt = int(fixed_length)
+                        else:
+                            length_px_gt = int(frac_gt * max_len)
+                        # invert GT arrow direction as well
+                        inv_avg_gx = -avg_gx
+                        inv_avg_gy = -avg_gy
+                        dir_x_gt = inv_avg_gx / avg_mag_gt
+                        dir_y_gt = inv_avg_gy / avg_mag_gt
+                        end_x_gt = int(cx + dir_x_gt * length_px_gt)
+                        end_y_gt = int(cy + dir_y_gt * length_px_gt)
+                        # draw GT arrow first (behind): white color
+                        cv2.arrowedLine(img, (cx, cy), (end_x_gt, end_y_gt), (255, 255, 255), thickness, tipLength=tip_length)
+
             # compute color via same HSV mapping as flow_to_image
+            # Use the ORIGINAL (non-inverted) flow direction for color so
+            # the color wheel represents the true flow direction even though
+            # the arrow geometry is inverted for visualization.
             ang = np.arctan2(avg_dy, avg_dx) + np.pi
             ang *= 1.0 / np.pi / 2.0
             hsv = np.array([ang, 1.0, (avg_mag - min_mag)])
@@ -515,10 +620,21 @@ class Visualization:
                 if mag < min_magnitude:
                     continue  # skip drawing short vectors
 
-                end_x = int(j + dx * scale)
-                end_y = int(i + dy * scale)
+                # invert direction
+                inv_dx = -dx
+                inv_dy = -dy
+                if fixed_length is not None:
+                    # draw sampled arrow with fixed pixel length in direction of vector
+                    ux = inv_dx / mag
+                    uy = inv_dy / mag
+                    end_x = int(j + ux * float(fixed_length))
+                    end_y = int(i + uy * float(fixed_length))
+                else:
+                    end_x = int(j + inv_dx * scale)
+                    end_y = int(i + inv_dy * scale)
 
-                # compute color from angle/magnitude like flow_to_image
+                # compute color from angle/magnitude using the ORIGINAL direction
+                # (do not invert) so colors correspond to the true flow direction
                 ang = np.arctan2(dy, dx) + np.pi
                 ang *= 1.0 / np.pi / 2.0
                 v = mag - min_mag
