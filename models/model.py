@@ -790,6 +790,57 @@ class SNNtorch_FCLIF(torch.nn.Module):
 
         return {"flow": [out], "state": new_state}
 
+class LIF_stateful(torch.nn.Module):
+    """
+    Stateful single-layer LIF using custom op with internal persistent membrane.
+    Input: N x channels x H x W
+    Output: N x channels x H x W (spikes)
+    The internal membrane is keyed by state_id and persists across forward calls.
+    If mem_in is provided (tensor), it overrides the internal state for that call.
+    """
+    def __init__(self, channels=4, leak=(0.0, 1.0), thresh=(0.0, 0.8), state_id=None, use_custom_op=True):
+        super().__init__()
+        self.channels = channels
+        # Auto-generate a unique state id per module if not provided
+        self.state_id = int(state_id) if state_id is not None else (id(self) & 0x7FFF_FFFF_FFFF_FFFF)
+        self.use_custom_op = use_custom_op
+        # beta and threshold per-channel
+        self.register_buffer("beta", torch.linspace(leak[0], leak[1], steps=channels))
+        self.register_buffer("threshold", torch.linspace(thresh[0], thresh[1], steps=channels))
+
+    def reset_state(self, mem_init=None, shape_hint=None, device=None, dtype=None):
+        """
+        Optionally prime the internal state by calling the op once with mem_in.
+        shape_hint: tuple (N,C,H,W) to create zeros if mem_init is None.
+        """
+        if not self.use_custom_op:
+            return
+        if mem_init is None:
+            if shape_hint is None:
+                return
+            N, C, H, W = shape_hint
+            device = device or (self.beta.device)
+            dtype = dtype or torch.float32
+            mem_init = torch.zeros((N, C, H, W), device=device, dtype=dtype)
+        dummy_inp = torch.zeros_like(mem_init)
+        # Calling once with mem_in seeds internal state.
+        _ = torch.ops.SNN_implementation.LIF_stateful(dummy_inp, mem_init, self.beta, self.threshold, self.state_id)
+
+    def forward(self, input, mem_in=None):
+        if self.use_custom_op:
+            # mem_in can be None to reuse internal state
+            return torch.ops.SNN_implementation.LIF_stateful(input, mem_in, self.beta, self.threshold, self.state_id)
+        else:
+            # Fallback minimal python behavior (stateless): if mem_in is None, use zeros
+            if mem_in is None:
+                mem_in = torch.zeros_like(input)
+            beta = self.beta.view(1, -1, 1, 1)
+            thr = self.threshold.view(1, -1, 1, 1)
+            mem = beta * mem_in + input
+            spk = (mem >= thr).to(input.dtype)
+            # do not persist in fallback path; return spikes only to match API
+            return spk
+
 
 class SNNtorch_ConvFCLIF(torch.nn.Module):
     """

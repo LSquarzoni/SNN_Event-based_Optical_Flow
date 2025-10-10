@@ -23,8 +23,8 @@ lif_op_extension = Extension(
 setup(
     name='ONNX_LIF_operator',
     version='0.1',
-    description='Custom LIF operator for ONNX',
-    packages=['src.python'],
+    description='Custom LIF operator for ONNX (stateless and stateful variants)',
+    packages=[],
     ext_modules=[lif_op_extension],
     install_requires=['torch', 'onnx', 'numpy'],
     zip_safe=False,
