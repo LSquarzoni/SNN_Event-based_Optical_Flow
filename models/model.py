@@ -706,89 +706,6 @@ class LIF(torch.nn.Module):
 
             return spk, mem_out
     
-    
-class SNNtorch_FCLIF(torch.nn.Module):
-    """
-    Fully connected spiking LIF small model using SNNTorch Leaky neuron.
-    """
-    def __init__(self, leak=(0.0, 1.0), thresh=(0.0, 0.8), detach=True):
-        super().__init__()
-        self.detach = detach
-        # Fixed input resolution: C=2, H=8, W=8
-        self.in_features = 2 * 8 * 8  # 128
-        self.leak = leak
-        self.thresh = thresh
-
-        # Layers defined up-front to register parameters before optimizer creation
-        self.fc1 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
-        self.lif1 = snn.Leaky(
-            beta=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.leak[0], self.leak[1])),
-            threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
-            learn_beta=True,
-            learn_threshold=True,
-            reset_mechanism="zero",
-            reset_delay=False,
-            spike_grad=snn.surrogate.atan(alpha=2),
-        )
-        self.fc2 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
-        self.lif2 = snn.Leaky(
-            beta=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.leak[0], self.leak[1])),
-            threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
-            learn_beta=True,
-            learn_threshold=True,
-            reset_mechanism="zero",
-            reset_delay=False,
-            spike_grad=snn.surrogate.atan(alpha=2),
-        )
-        self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
-
-        # LIF states
-        self.states = [None, None]
-
-    def reset_states(self):
-        self.states = [None, None]
-
-    def forward(self, input_, prev_state=None, log=False):
-        # input_: [B, C, H, W]
-        B, C, H, W = input_.shape
-        flattened_size = C * H * W
-        # Sanity check for expected input size
-        if flattened_size != self.in_features:
-            raise ValueError(f"SNNtorch_FCLIF expects C*H*W={self.in_features}, got {flattened_size} (C={C}, H={H}, W={W}).")
-
-        # Reshape input to [B, C*H*W]
-        x = input_.reshape(B, self.in_features)
-
-        # Use prev_state if provided, otherwise use self.states
-        if prev_state is not None:
-            mem1, mem2 = prev_state
-        else:
-            mem1, mem2 = self.states
-
-        # Block 1: FC -> LIF
-        x1 = self.fc1(x)
-        spk1, mem1 = self.lif1(x1, mem1)
-        if self.detach:
-            self.lif1.detach_hidden()
-
-        # Block 2: FC -> LIF
-        x2 = self.fc2(spk1)
-        spk2, mem2 = self.lif2(x2, mem2)
-        if self.detach:
-            self.lif2.detach_hidden()
-
-        # Block 3: FC
-        out = self.fc3(spk2)
-
-        # Reshape output back to [B, C, H, W]
-        out = out.reshape(B, C, H, W)
-
-        # Always update self.states with new membrane values
-        self.states = [mem1, mem2]
-
-        new_state = [mem1, mem2]
-
-        return {"flow": [out], "state": new_state}
 
 class LIF_stateful(torch.nn.Module):
     """
@@ -840,6 +757,93 @@ class LIF_stateful(torch.nn.Module):
             spk = (mem >= thr).to(input.dtype)
             # do not persist in fallback path; return spikes only to match API
             return spk
+        
+        
+class SNNtorch_FCLIF(torch.nn.Module):
+    """
+    Fully connected spiking LIF small model using SNNTorch Leaky neuron.
+    """
+    def __init__(self, leak=(0.0, 1.0), thresh=(0.0, 0.8), detach=True):
+        super().__init__()
+        self.detach = detach
+        # Fixed input resolution: C=2, H=8, W=8
+        self.in_features = 2 * 8 * 8  # 128
+        self.out_features = 2 # only one x and y flow output
+        self.leak = leak
+        self.thresh = thresh
+
+        # Layers defined up-front to register parameters before optimizer creation
+        self.fc1 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        self.lif1 = snn.Leaky(
+            beta=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.leak[0], self.leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
+            learn_beta=True,
+            learn_threshold=True,
+            reset_mechanism="zero",
+            reset_delay=False,
+            spike_grad=snn.surrogate.atan(alpha=2),
+        )
+        self.fc2 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        self.lif2 = snn.Leaky(
+            beta=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.leak[0], self.leak[1])),
+            threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
+            learn_beta=True,
+            learn_threshold=True,
+            reset_mechanism="zero",
+            reset_delay=False,
+            spike_grad=snn.surrogate.atan(alpha=2),
+        )
+        #self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        self.fc3 = torch.nn.Linear(self.in_features, self.out_features, bias=False)
+
+        # LIF states
+        self.states = [None, None]
+
+    def reset_states(self):
+        self.states = [None, None]
+
+    def forward(self, input_, prev_state=None, log=False):
+        # input_: [B, C, H, W]
+        B, C, H, W = input_.shape
+        flattened_size = C * H * W
+        # Sanity check for expected input size
+        if flattened_size != self.in_features:
+            raise ValueError(f"SNNtorch_FCLIF expects C*H*W={self.in_features}, got {flattened_size} (C={C}, H={H}, W={W}).")
+
+        # Reshape input to [B, C*H*W]
+        x = input_.reshape(B, self.in_features)
+
+        # Use prev_state if provided, otherwise use self.states
+        if prev_state is not None:
+            mem1, mem2 = prev_state
+        else:
+            mem1, mem2 = self.states
+
+        # Block 1: FC -> LIF
+        x1 = self.fc1(x)
+        spk1, mem1 = self.lif1(x1, mem1)
+        if self.detach:
+            self.lif1.detach_hidden()
+
+        # Block 2: FC -> LIF
+        x2 = self.fc2(spk1)
+        spk2, mem2 = self.lif2(x2, mem2)
+        if self.detach:
+            self.lif2.detach_hidden()
+
+        # Block 3: FC
+        out = self.fc3(spk2)
+
+        # Reshape output
+        #out = out.reshape(B, C, H, W)
+        out = out.reshape(B, C, 1, 1)
+
+        # Always update self.states with new membrane values
+        self.states = [mem1, mem2]
+
+        new_state = [mem1, mem2]
+
+        return {"flow": [out], "state": new_state}
 
 
 class SNNtorch_ConvFCLIF(torch.nn.Module):
@@ -851,6 +855,7 @@ class SNNtorch_ConvFCLIF(torch.nn.Module):
         self.detach = detach
         # Fixed input resolution: C=2, H=8, W=8
         self.in_features = 2 * 8 * 8  # 128 after flatten
+        self.out_features = 2 # only one x and y flow output
         self.leak = leak
         self.thresh = thresh
 
@@ -886,7 +891,8 @@ class SNNtorch_ConvFCLIF(torch.nn.Module):
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
-        self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        #self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        self.fc3 = torch.nn.Linear(self.in_features, self.out_features, bias=False)
         # LIF states
         self.states = [None, None, None]
 
@@ -931,8 +937,9 @@ class SNNtorch_ConvFCLIF(torch.nn.Module):
         # Block 4: FC
         out = self.fc3(spk2)
 
-        # Reshape output back to [B, C, H, W]
-        out = out.reshape(B, C, H, W)
+        # Reshape output
+        #out = out.reshape(B, C, H, W)
+        out = out.reshape(B, C, 1, 1)
 
         # Always update self.states with new membrane values
         self.states = [mem_conv, mem1, mem2]

@@ -78,10 +78,14 @@ def test(args, config_parser):
         vis = Visualization(config, eval_id=eval_id, path_results=path_results, vis_type=vis_type)
 
     # model initialization and settings
-    #model_path_dir = "mlruns/0/models/LIF_FC/2/model.pth" # runid: 3d2d0d3471b849abb689a8e32a2af613
-    #model_path_dir = "mlruns/0/models/LIF_FC/3/model.pth" # runid: 0a10ae23f6724228bebfd312a59fcbc0
-    model_path_dir = "mlruns/0/models/LIF_FC_3l/28/model.pth" # runid: 2a74ca0b11eb4ba69f4a550c20331119
+    #model_path_dir = "mlruns/0/models/LIF_FC_3l/28/model.pth" # runid: 2a74ca0b11eb4ba69f4a550c20331119
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC/29/model.pth" # runid: a9d7723f16d544bfa155282fc231ac1b
+    model_path_dir = "mlruns/0/models/LIF_FC_newOUT//model.pth" # runid: 15a795fdc3e343019118f363e947be7d
+    model_path_dir = "mlruns/0/models/LIF_Conv_FC_newOUT//model.pth" # runid: 9311acda2e714108bc3779b439b1639f
+    model_path_dir = "mlruns/0/models/LIF_FC_newIN//model.pth" # runid:
+    model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN//model.pth" # runid:
+    model_path_dir = "mlruns/0/models/LIF_FC_newIN_OUT//model.pth" # runid: 4a4532f90d1e4863be45632a806b1d39
+    model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN_OUT//model.pth" # runid:
     
     model = eval(config["model"]["name"])().to(device)
     
@@ -145,6 +149,27 @@ def test(args, config_parser):
                     resolution = config["loader"]["std_resolution"]
                 else:
                     resolution = config["loader"]["resolution"]
+
+                # Ensure model flow outputs are at the requested evaluation resolution
+                # (models may output a single global flow [B,2,1,1] or small maps)
+                target_h, target_w = int(resolution[0]), int(resolution[1])
+                resized_flows = []
+                for f in x["flow"]:
+                    h_in, w_in = f.shape[2], f.shape[3]
+                    if h_in == 1 and w_in == 1:
+                        # exact tiling for a single global flow value
+                        try:
+                            resized_flows.append(f.expand(-1, -1, target_h, target_w))
+                        except Exception:
+                            # expand may return a non-contiguous view; fall back to repeat
+                            resized_flows.append(f.repeat(1, 1, target_h, target_w))
+                    else:
+                        resized_flows.append(f)
+                x["flow"] = resized_flows
+
+                # Update visualization flows from resized outputs
+                flow_vis_unmasked = x["flow"][-1].clone()
+                flow_vis = x["flow"][-1].clone()
 
                 # image of warped events
                 iwe = compute_pol_iwe(

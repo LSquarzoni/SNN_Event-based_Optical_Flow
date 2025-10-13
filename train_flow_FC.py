@@ -6,7 +6,7 @@ import torch
 from torch.optim import *
 
 from configs.parser import YAMLParser
-from dataloader import H5Loader, PatchH5Loader
+from dataloader import PatchH5Loader
 from loss.flow import EventWarping
 from models.model import (
     SNNtorch_FCLIF,
@@ -113,7 +113,7 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIF_Conv_FC/")
+                        model_save_path = get_next_model_folder("mlruns/0/models/LIF_FC_newIN_OUT/")
                         os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {

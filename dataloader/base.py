@@ -42,6 +42,8 @@ class BaseDataLoader(torch.utils.data.Dataset):
             self.hot_events = [
                 torch.zeros(self.resolution) for i in range(self.config["loader"]["batch_size"])
             ]
+        # per-batch previous cnt (for temporal_cnt encoding)
+        self.prev_cnt = [None for i in range(self.config["loader"]["batch_size"])]
 
     @abstractmethod
     def __getitem__(self, index):
@@ -268,6 +270,36 @@ class BaseDataLoader(torch.utils.data.Dataset):
                 item = item.transpose(2, 1)
             batch_dict[key] = item
         return batch_dict
+
+    def apply_temporal_cnt(self, event_cnt, batch_idx):
+        """
+        If enabled via config['model']['temporal_cnt'], convert a standard
+        two-channel per-polarity event count tensor [2,H,W] into a temporal
+        two-channel tensor where channel 0 = (pos - neg) current frame and
+        channel 1 = (pos - neg) previous frame for this batch slot.
+
+        Updates internal `self.prev_cnt[batch_idx]` accordingly.
+        """
+        if not self.config.get("model", {}).get("temporal_cnt", False):
+            return event_cnt
+
+        # event_cnt expected shape: [2, H, W]
+        try:
+            curr = (event_cnt[0] - event_cnt[1]).unsqueeze(0)  # [1, H, W]
+        except Exception:
+            # unexpected shape; just return as-is
+            return event_cnt
+
+        prev = self.prev_cnt[batch_idx]
+        if prev is None:
+            prev = torch.zeros_like(curr)
+
+        new_cnt = torch.cat([curr, prev], dim=0)  # [2, H, W]
+
+        # store a copy of current for next call
+        self.prev_cnt[batch_idx] = curr.clone()
+
+        return new_cnt
 
     def shuffle(self, flag=True):
         """

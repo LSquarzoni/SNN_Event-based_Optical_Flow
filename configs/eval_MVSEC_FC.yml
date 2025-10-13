@@ -9,6 +9,7 @@ model:
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     num_bins: 2
+    temporal_cnt: True # if True, use temporal cnt encoding
 
 metrics:
     name: [AEE, AE]  # AEE, NEE, AE

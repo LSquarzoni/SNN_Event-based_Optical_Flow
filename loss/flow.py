@@ -23,6 +23,33 @@ def spatial_variance(x):
     )
 
 
+def _ensure_full_res_flow(flow, res):
+    """Ensure `flow` has spatial resolution `res` (H, W).
+
+    If `flow` already matches `res`, return it unchanged. If `flow` is a
+    global flow with shape [B, 2, 1, 1], expand it to [B, 2, H, W] by
+    repeating the values. Otherwise fall back to interpolation to reach the
+    desired size.
+    """
+    if flow is None:
+        return flow
+    # expected res is (H, W)
+    try:
+        h_res, w_res = int(res[0]), int(res[1])
+    except Exception:
+        return flow
+
+    if flow.shape[2] == h_res and flow.shape[3] == w_res:
+        return flow
+
+    # If it's a single value per image, expand/repeat to full resolution.
+    if flow.shape[2] == 1 and flow.shape[3] == 1:
+        return flow.expand(-1, -1, h_res, w_res)
+
+    # Otherwise, use interpolation as a safe fallback.
+    return torch.nn.functional.interpolate(flow, size=(h_res, w_res), mode="bilinear", align_corners=False)
+
+
 class EventWarping(torch.nn.Module):
     """
     Contrast maximization loss, as described in Section 3.2 of the paper 'Unsupervised Event-based Learning
@@ -71,6 +98,8 @@ class EventWarping(torch.nn.Module):
 
         # get flow for every event in the list
         for i, flow in enumerate(flow_list):
+            # ensure flow has full resolution matching self.res
+            flow = _ensure_full_res_flow(flow, self.res)
             flow = flow.view(flow.shape[0], 2, -1)
             event_flowy = torch.gather(flow[:, 1, :], 1, flow_idx.long())  # vertical component
             event_flowx = torch.gather(flow[:, 0, :], 1, flow_idx.long())  # horizontal component
@@ -108,12 +137,14 @@ class EventWarping(torch.nn.Module):
             self._flow_maps_y = []
 
         for i, flow in enumerate(flow_list):
+            # ensure stored flow maps have full resolution
+            f = _ensure_full_res_flow(flow, self.res)
             if i == len(self._flow_maps_x):
-                self._flow_maps_x.append(flow[:, 0:1, :, :])
-                self._flow_maps_y.append(flow[:, 1:2, :, :])
+                self._flow_maps_x.append(f[:, 0:1, :, :])
+                self._flow_maps_y.append(f[:, 1:2, :, :])
             else:
-                self._flow_maps_x[i] = torch.cat([self._flow_maps_x[i], flow[:, 0:1, :, :]], dim=1)
-                self._flow_maps_y[i] = torch.cat([self._flow_maps_y[i], flow[:, 1:2, :, :]], dim=1)
+                self._flow_maps_x[i] = torch.cat([self._flow_maps_x[i], f[:, 0:1, :, :]], dim=1)
+                self._flow_maps_y[i] = torch.cat([self._flow_maps_y[i], f[:, 1:2, :, :]], dim=1)
 
         # update timestamp index
         self._passes += 1
@@ -134,6 +165,8 @@ class EventWarping(torch.nn.Module):
 
         # get flow for every event in the list
         for flow in flow_list:
+            # ensure flow has full resolution matching self.res
+            flow = _ensure_full_res_flow(flow, self.res)
             self._flow_maps_x.append(flow[:, 0:1, :, :])
             self._flow_maps_y.append(flow[:, 1:2, :, :])
 
@@ -259,16 +292,29 @@ class EventWarping(torch.nn.Module):
             bw_loss = torch.sum(bw_loss)
 
             # flow smoothing
-            flow_x_dx = self._flow_maps_x[i][:, :, :, :-1] - self._flow_maps_x[i][:, :, :, 1:]
-            flow_y_dx = self._flow_maps_y[i][:, :, :, :-1] - self._flow_maps_y[i][:, :, :, 1:]
-            flow_x_dy = self._flow_maps_x[i][:, :, :-1, :] - self._flow_maps_x[i][:, :, 1:, :]
-            flow_y_dy = self._flow_maps_y[i][:, :, :-1, :] - self._flow_maps_y[i][:, :, 1:, :]
-            flow_x_dxdy_dr = self._flow_maps_x[i][:, :, :-1, :-1] - self._flow_maps_x[i][:, :, 1:, 1:]
-            flow_y_dxdy_dr = self._flow_maps_y[i][:, :, :-1, :-1] - self._flow_maps_y[i][:, :, 1:, 1:]
-            flow_x_dxdy_ur = self._flow_maps_x[i][:, :, 1:, :-1] - self._flow_maps_x[i][:, :, :-1, 1:]
-            flow_y_dxdy_ur = self._flow_maps_y[i][:, :, 1:, :-1] - self._flow_maps_y[i][:, :, :-1, 1:]
-            flow_x_dt = self._flow_maps_x[i][:, :-1, :, :] - self._flow_maps_x[i][:, 1:, :, :]
-            flow_y_dt = self._flow_maps_y[i][:, :-1, :, :] - self._flow_maps_y[i][:, 1:, :, :]
+            # Ensure stored flow maps have the expected spatial resolution (self.res)
+            fx = self._flow_maps_x[i]
+            fy = self._flow_maps_y[i]
+            # fx, fy shape: [B, T, H, W]
+            if fx.shape[2] != self.res[0] or fx.shape[3] != self.res[1]:
+                B, T, Hf, Wf = fx.shape
+                fx = fx.view(B * T, 1, Hf, Wf)
+                fy = fy.view(B * T, 1, Hf, Wf)
+                fx = torch.nn.functional.interpolate(fx, size=(self.res[0], self.res[1]), mode="bilinear", align_corners=False)
+                fy = torch.nn.functional.interpolate(fy, size=(self.res[0], self.res[1]), mode="bilinear", align_corners=False)
+                fx = fx.view(B, T, self.res[0], self.res[1])
+                fy = fy.view(B, T, self.res[0], self.res[1])
+
+            flow_x_dx = fx[:, :, :, :-1] - fx[:, :, :, 1:]
+            flow_y_dx = fy[:, :, :, :-1] - fy[:, :, :, 1:]
+            flow_x_dy = fx[:, :, :-1, :] - fx[:, :, 1:, :]
+            flow_y_dy = fy[:, :, :-1, :] - fy[:, :, 1:, :]
+            flow_x_dxdy_dr = fx[:, :, :-1, :-1] - fx[:, :, 1:, 1:]
+            flow_y_dxdy_dr = fy[:, :, :-1, :-1] - fy[:, :, 1:, 1:]
+            flow_x_dxdy_ur = fx[:, :, 1:, :-1] - fx[:, :, :-1, 1:]
+            flow_y_dxdy_ur = fy[:, :, 1:, :-1] - fy[:, :, :-1, 1:]
+            flow_x_dt = fx[:, :-1, :, :] - fx[:, 1:, :, :]
+            flow_y_dt = fy[:, :-1, :, :] - fy[:, 1:, :, :]
 
             flow_dx = torch.sqrt((flow_x_dx + flow_y_dx) ** 2 + 1e-6)  # charbonnier
             flow_dy = torch.sqrt((flow_x_dy + flow_y_dy) ** 2 + 1e-6)  # charbonnier
@@ -352,7 +398,7 @@ class BaseValidationLoss(torch.nn.Module):
 
         # get flow for every event in the list
         flow = flow_list[-1]  # only highest resolution flow
-        
+        flow = _ensure_full_res_flow(flow, self.res)
         flow = flow.view(flow.shape[0], 2, -1)
         event_flowy = torch.gather(flow[:, 1, :], 1, flow_idx.long())  # vertical component
         event_flowx = torch.gather(flow[:, 0, :], 1, flow_idx.long())  # horizontal component
@@ -412,7 +458,7 @@ class BaseValidationLoss(torch.nn.Module):
 
         # get flow for every event in the list
         flow = flow_list[-1]  # only highest resolution flow
-        
+        flow = _ensure_full_res_flow(flow, self.res)
         flow = flow.view(flow.shape[0], 2, -1)
         event_flowy = torch.gather(flow[:, 1, :], 1, flow_idx.long())  # vertical component
         event_flowx = torch.gather(flow[:, 0, :], 1, flow_idx.long())  # horizontal component

@@ -23,6 +23,7 @@ model:
     base_num_channels: 4
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
+    temporal_cnt: False # if True, use temporal cnt encoding
 
     spiking_neuron:
         leak: [0.0, 1.0]

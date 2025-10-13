@@ -136,6 +136,10 @@ class PatchH5Loader(BaseDataLoader):
             event_list = self.create_list_encoding(xs, ys, ts, ps)
             event_list_pol_mask = self.create_polarity_mask(ps)
 
+            # optional temporal cnt encoding: convert [2,H,W] -> [2,H,W] with
+            # channel0 = current pos-neg, channel1 = previous pos-neg
+            event_cnt = self.apply_temporal_cnt(event_cnt, b)
+
             # hot pixel removal (if enabled)
             if self.config["hot_filter"]["enabled"]:
                 hot_mask = self.create_hot_mask(event_cnt, b)
