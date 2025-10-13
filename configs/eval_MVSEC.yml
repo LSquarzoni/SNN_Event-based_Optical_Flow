@@ -1,7 +1,7 @@
 data:
     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
-    mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
-    window: 1 # 1 for dt1, 0.25 for dt4
+    mode: gtflow_dt4 # gtflow_dt1/gtflow_dt4
+    window: 0.25 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
 
 model:
@@ -20,7 +20,7 @@ model:
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
     num_bins: 2
-    base_num_channels: 32
+    base_num_channels: 4
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
 
@@ -34,11 +34,11 @@ model:
 
 metrics:
     name: [AEE, AE]  # AEE, NEE, AE
-    flow_scaling: 128
+    flow_scaling: 8
 
 loader:
     batch_size: 1
-    resolution: [64, 64] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [8, 8] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
     gpu: 0
