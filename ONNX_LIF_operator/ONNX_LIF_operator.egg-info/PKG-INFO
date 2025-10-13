@@ -1,7 +1,7 @@
 Metadata-Version: 2.1
 Name: ONNX_LIF_operator
 Version: 0.1
-Summary: Custom LIF operator for ONNX
+Summary: Custom LIF operator for ONNX (stateless and stateful variants)
 Requires-Dist: torch
 Requires-Dist: onnx
 Requires-Dist: numpy
