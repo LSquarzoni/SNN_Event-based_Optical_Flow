@@ -21,7 +21,7 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [8, 8] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
     gpu: 0
@@ -34,7 +34,7 @@ vis:
     activity: False
     store: True
     store_interval: 0.0  # store every x seconds, 0.0 to disable
-    #type: gradients # gradients or vectors
+    type: vectors # gradients or vectors
     store_type: video # video or image
 
 hot_filter:

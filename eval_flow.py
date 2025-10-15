@@ -152,6 +152,8 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_16ch_short/33/model.pth" # runid: 7b3c8e69807d44c79abc682e96ff57e1
     #model_path_dir = "mlruns/0/models/LIFFN_8ch_short/23/model.pth" # runid: b61534e5119a4704a66638c1ba78f308
     #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
+    model_path_dir = "mlruns/0/models/LIFFN_newIN//model.pth" # runid: 62d2987219a6417e94cb6ac3850aadb9
+    model_path_dir = "mlruns/0/models/LIFFN_newOUT//model.pth" # runid: 14153d8b5da745a09eb1d20bc275dc46
     
     #model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
     #model_path_dir = "mlruns/0/models/LIFFFN_16ch/23/model.pth" # runid: 5263c20879994d469904e950f8835953
@@ -160,7 +162,10 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_short/31/model.pth" # runid: 5d9d714fafa144a888f770199de6ac46
     #model_path_dir = "mlruns/0/models/LIFFFN_16ch_short/24/model.pth" # runid: 9b45bea0c1cd481a94a046e71793ef32
     #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short/11/model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
-    model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
+    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
+    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN/8/model.pth" # runid: 98efd73ac99646c8bd35e387217a7d94
+    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newOUT/25/model.pth" # runid: bf537ca6bde14f8e91e59590bfc2ca94
+    model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN_OUT//model.pth" # runid:
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
@@ -226,6 +231,29 @@ def test(args, config_parser):
                     x = model(
                         inputs["event_voxel"].to(device), inputs["event_cnt"].to(device), log=config["vis"]["activity"]
                     )
+                    
+                    if config["loader"]["output_crop"]:
+                        resolution = config["loader"]["std_resolution"]
+                    else:
+                        resolution = config["loader"]["resolution"]
+                    
+                    # Ensure model flow outputs are at the requested evaluation resolution
+                    # (models may output a single global flow [B,2,1,1] or small maps)
+                    target_h, target_w = int(resolution[0]), int(resolution[1])
+                    resized_flows = []
+                    for f in x["flow"]:
+                        h_in, w_in = f.shape[2], f.shape[3]
+                        if h_in == 1 and w_in == 1:
+                            # exact tiling for a single global flow value
+                            try:
+                                resized_flows.append(f.expand(-1, -1, target_h, target_w))
+                            except Exception:
+                                # expand may return a non-contiguous view; fall back to repeat
+                                resized_flows.append(f.repeat(1, 1, target_h, target_w))
+                        else:
+                            resized_flows.append(f)
+                    x["flow"] = resized_flows
+                    
                     # mask flow for visualization
                     flow_vis_unmasked = x["flow"][-1].clone()
                     flow_vis = x["flow"][-1].clone()

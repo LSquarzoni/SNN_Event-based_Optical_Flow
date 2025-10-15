@@ -80,12 +80,12 @@ def test(args, config_parser):
     # model initialization and settings
     #model_path_dir = "mlruns/0/models/LIF_FC_3l/28/model.pth" # runid: 2a74ca0b11eb4ba69f4a550c20331119
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC/29/model.pth" # runid: a9d7723f16d544bfa155282fc231ac1b
-    model_path_dir = "mlruns/0/models/LIF_FC_newOUT//model.pth" # runid: 15a795fdc3e343019118f363e947be7d
-    model_path_dir = "mlruns/0/models/LIF_Conv_FC_newOUT//model.pth" # runid: 9311acda2e714108bc3779b439b1639f
-    model_path_dir = "mlruns/0/models/LIF_FC_newIN//model.pth" # runid:
-    model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN//model.pth" # runid:
-    model_path_dir = "mlruns/0/models/LIF_FC_newIN_OUT//model.pth" # runid: 4a4532f90d1e4863be45632a806b1d39
-    model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN_OUT//model.pth" # runid:
+    model_path_dir = "mlruns/0/models/LIF_FC_newOUT/18/model.pth" # runid: 15a795fdc3e343019118f363e947be7d
+    #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newOUT/11/model.pth" # runid: 9311acda2e714108bc3779b439b1639f
+    #model_path_dir = "mlruns/0/models/LIF_FC_newIN/32/model.pth" # runid: 043cad279b7b4194b4cde29330ca03a8
+    #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIF_FC_newIN_OUT//model.pth" # runid: 4a4532f90d1e4863be45632a806b1d39
+    #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN_OUT//model.pth" # runid:
     
     model = eval(config["model"]["name"])().to(device)
     
@@ -138,12 +138,6 @@ def test(args, config_parser):
                 x = model(
                     inputs["event_cnt"].to(device), log=config["vis"]["activity"]
                 )
-
-                # mask flow for visualization
-                flow_vis_unmasked = x["flow"][-1].clone()
-                flow_vis = x["flow"][-1].clone()
-                # if model.mask:
-                #     flow_vis *= inputs["event_mask"].to(device)
                     
                 if config["loader"]["output_crop"]:
                     resolution = config["loader"]["std_resolution"]

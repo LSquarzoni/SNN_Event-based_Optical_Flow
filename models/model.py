@@ -89,8 +89,8 @@ class FireNet(BaseModel):
         )
 
         self.pred = ConvLayer(
-            #base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
-            base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
+            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
+            #base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property
@@ -155,7 +155,9 @@ class FireNet(BaseModel):
         x6, self._states[5] = self.R2a(x5, self._states[5])
         x7, self._states[6] = self.R2b(x6, self._states[6], residual=x5 if self.residual else 0)
 
-        flow = self.pred(x7)
+        # Predict dense flow then pool to a single (x, y) pair per sample
+        flow = self.pred(x7)  # [B, 2, H, W]
+        flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
 
         # log activity
         if log:
@@ -306,7 +308,9 @@ class FireNet_short(BaseModel):
         x5, self._states[4] = self.R2a(x4, self._states[4])
         # Skip R2b
 
-        flow = self.pred(x5)  # pred now takes x5 instead of x7
+        # Predict dense flow then pool to a single (x, y) pair per sample
+        flow = self.pred(x5)  # [B, 2, H, W]
+        flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
 
         # log activity
         if log:
@@ -645,9 +649,9 @@ class LIFFireFlowNet(FireNet):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = SNNtorch_ConvReLU
-    ff_neuron = SNNtorch_ConvReLU
-    rec_neuron = SNNtorch_ConvReLU
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
     
@@ -657,9 +661,9 @@ class LIFFireFlowNet_short(FireNet_short):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = SNNtorch_ConvReLU
-    ff_neuron = SNNtorch_ConvReLU
-    rec_neuron = SNNtorch_ConvReLU
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
     

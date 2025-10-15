@@ -8,19 +8,19 @@ data:
     window_loss: 10000 # events
 
 model:
-    #name: LIFFireNet # for other models available, see models/model.py
+    name: LIFFireNet # for other models available, see models/model.py
     #name: LIFFireNet_short # shorter model with 6 layers instead of 8
     #name: LIFFireFlowNet # no recurrent model
-    name: LIFFireFlowNet_short # no recurrent model with only 6 layers
+    #name: LIFFireFlowNet_short # no recurrent model with only 6 layers
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
     num_bins: 2
-    base_num_channels: 4
+    base_num_channels: 32
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
-    temporal_cnt: False # if True, use temporal cnt encoding
+    temporal_cnt: False # if True, use temporal cnt input encoding
     quantization:
         enabled: False
         type: int8 # int8 or int16

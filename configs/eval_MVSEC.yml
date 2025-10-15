@@ -1,36 +1,36 @@
 data:
     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
-    mode: gtflow_dt4 # gtflow_dt1/gtflow_dt4
-    window: 0.25 # 1 for dt1, 0.25 for dt4
+    mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
+    window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
 
 model:
     mask_output: True
+    temporal_cnt: False # if True, use temporal cnt input encoding
     quantization:
         enabled: False
         type: int8 # int8 or int16
         PTQ: False # Post Training Quantization enabled or not
 
 # To generate non-trained models -----------------------------------------------------------
-    #name: LIFFireNet # for other models available, see models/model.py
-    #name: LIFFireNet_short # shorter model with 6 layers instead of 8
-    name: LIFFireFlowNet # no recurrent model
-    #name: LIFFireFlowNet_short # no recurrent model with only 6 layers
-    encoding: cnt # voxel/cnt
-    round_encoding: False # for voxel encoding
-    norm_input: False # normalize input
-    num_bins: 2
-    base_num_channels: 4
-    kernel_size: 3
-    activations: [arctanspike, arctanspike] # activations for ff and rec neurons
-    temporal_cnt: False # if True, use temporal cnt encoding
+    # #name: LIFFireNet # for other models available, see models/model.py
+    # #name: LIFFireNet_short # shorter model with 6 layers instead of 8
+    # #name: LIFFireFlowNet # no recurrent model
+    # name: LIFFireFlowNet_short # no recurrent model with only 6 layers
+    # encoding: cnt # voxel/cnt
+    # round_encoding: False # for voxel encoding
+    # norm_input: False # normalize input
+    # num_bins: 2
+    # base_num_channels: 4
+    # kernel_size: 3
+    # activations: [arctanspike, arctanspike] # activations for ff and rec neurons
 
-    spiking_neuron:
-        leak: [0.0, 1.0]
-        thresh: [0.0, 0.8]
-        learn_leak: True
-        learn_thresh: True
-        hard_reset: True
+    # spiking_neuron:
+    #     leak: [0.0, 1.0]
+    #     thresh: [0.0, 0.8]
+    #     learn_leak: True
+    #     learn_thresh: True
+    #     hard_reset: True
 # ----------------------------------------------------------------------------------------
 
 metrics:
