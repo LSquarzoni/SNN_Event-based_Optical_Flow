@@ -31,7 +31,7 @@ def set_valueinfo_shape(value_proto, dims):
 
 # Settings for dummy input and model
 batch_size = 1
-channels = 4  # hidden_size for LIF
+channels = 8  # hidden_size for LIF
 height = 32
 width = 32
 out_shape = [batch_size, channels, height, width]
