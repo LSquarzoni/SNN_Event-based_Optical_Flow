@@ -2,18 +2,32 @@ import argparse
 import torch
 import onnx
 import mlflow
+import os
 from brevitas import config as cf
 from brevitas.export import export_onnx_qcdq
 from brevitas.graph.calibrate import calibration_mode
 from onnxsim import simplify
 import numpy as np
-
-cf.IGNORE_MISSING_KEYS = True
-
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short, LIF
+from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short
 from utils.utils import load_model
+from torch.onnx import register_custom_op_symbolic
+from torch.onnx import symbolic_helper as sym_help
+
+def lif_leaky_symbolic(g, input, mem, beta, threshold):
+    return g.op("SNN_implementation::LIF", input, mem, beta, threshold, outputs=2)
+
+# Load the custom LIF operators
+register_custom_op_symbolic('SNN_implementation::LIF', lif_leaky_symbolic, 11)
+# Ensure Torch can find its own libs when loading the custom op
+torch_lib = os.path.join(os.path.dirname(torch.__file__), 'lib')
+os.environ['LD_LIBRARY_PATH'] = f"{torch_lib}:{os.environ.get('LD_LIBRARY_PATH','')}"
+# Load the compiled custom op shared library
+custom_op_path = os.path.join('ONNX_LIF_operator', 'build', 'lib.linux-x86_64-cpython-39', 'lif_op.cpython-39-x86_64-linux-gnu.so')
+torch.ops.load_library(custom_op_path)
+
+cf.IGNORE_MISSING_KEYS = True
 
 def calibrate_model(calibration_loader, quant_model, device, num_batches=50):
     """Calibrate the quantized model"""

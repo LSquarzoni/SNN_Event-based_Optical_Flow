@@ -15,6 +15,8 @@ from .spiking_submodules import (
 from .SNNtorch_spiking_submodules import (
     SNNtorch_ConvLIF,
     SNNtorch_ConvLIFRecurrent,
+    custom_ConvLIF,
+    custom_ConvLIFRecurrent,
 )
 from .submodules import ConvGRU, ConvLayer, ConvLayer_, ConvRecurrent
 from .unet import (
@@ -242,8 +244,8 @@ class FireNet_short(BaseModel):
         # R2b removed
 
         self.pred = ConvLayer(
-            base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
-            #base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
+            #base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
+            base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property
@@ -310,7 +312,7 @@ class FireNet_short(BaseModel):
 
         # Predict dense flow then pool to a single (x, y) pair per sample
         flow = self.pred(x5)  # [B, 2, H, W]
-        flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
+        #flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
 
         # log activity
         if log:
@@ -661,9 +663,9 @@ class LIFFireFlowNet_short(FireNet_short):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = SNNtorch_ConvLIF
-    ff_neuron = SNNtorch_ConvLIF
-    rec_neuron = SNNtorch_ConvLIF
+    head_neuron = custom_ConvLIF
+    ff_neuron = custom_ConvLIF
+    rec_neuron = custom_ConvLIF
     residual = False
     w_scale_pred = 0.01
     

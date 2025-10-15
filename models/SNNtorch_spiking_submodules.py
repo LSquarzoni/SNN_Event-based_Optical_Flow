@@ -329,3 +329,143 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         new_state = torch.stack([mem_out, spk_out])
 
         return spk_out, new_state
+    
+
+
+class custom_ConvLIF(nn.Module):
+    """
+    Convolutional spiking LIF cell using ONNX custom LIF operator.
+
+    Design choices:
+    - Uses ONNX custom LIF operator for LIF dynamics
+    - Maintains compatibility with existing model interface
+    - Per-channel parameters like original implementation
+    """
+
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        kernel_size,
+        stride=1,
+        activation="arctanspike",
+        act_width=10.0,
+        leak=(0.0, 1.0),
+        thresh=(0.0, 0.8),
+        learn_leak=True,
+        learn_thresh=True,
+        hard_reset=True,
+        detach=True,
+        norm=None,
+        quantization_config=None,
+    ):
+        super().__init__()
+
+        # shapes
+        padding = kernel_size // 2
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
+        # Per-channel parameters matching original implementation
+        self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
+        self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
+
+        self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
+
+        # weight init
+        w_scale = math.sqrt(1 / input_size)
+        nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
+
+    def forward(self, input_, prev_state):
+        ff = self.ff(input_)
+
+        # Extract membrane potential from prev_state for compatibility
+        if prev_state is None:
+            mem = None
+        else:
+            mem = prev_state[0]  # First element is membrane potential
+
+        # Apply LIF activation
+        out = torch.ops.SNN_implementation.LIF(ff, mem, self.beta, self.threshold)
+        spk = out[0]  # shape [N, C, H, W]
+        mem_out = out[1]  # shape [N, C, H, W]
+
+        # Create new state compatible with original interface
+        new_state = torch.stack([mem_out, spk])
+
+        return spk, new_state
+    
+
+class custom_ConvLIFRecurrent(nn.Module):
+    """
+    Convolutional recurrent spiking LIF cell using ONNX custom LIF operator.
+
+    Design choices:
+    - Uses ONNX custom LIF operator for LIF dynamics
+    - Maintains compatibility with existing model interface
+    - Per-channel parameters like original implementation
+    - Includes recurrent connections
+    """
+
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        kernel_size,
+        activation="arctanspike",
+        act_width=10.0,
+        leak=(0.0, 1.0),
+        thresh=(0.0, 0.8),
+        learn_leak=True,
+        learn_thresh=True,
+        hard_reset=True,
+        detach=True,
+        norm=None,
+        quantization_config=None,
+    ):
+        super().__init__()
+
+        # shapes
+        padding = kernel_size // 2
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        
+        # Per-channel parameters matching original implementation
+        self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
+        self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
+
+        self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
+        self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
+
+        # weight init
+        w_scale_ff = math.sqrt(1 / input_size)
+        w_scale_rec = math.sqrt(1 / hidden_size)
+        nn.init.uniform_(self.ff.weight, -w_scale_ff, w_scale_ff)
+        nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
+
+    def forward(self, input_, prev_state):
+        ff = self.ff(input_)
+
+        # Extract membrane potential and previous spikes from prev_state
+        if prev_state is None:
+            mem = None
+            prev_spk = torch.zeros_like(ff)
+        else:
+            mem = prev_state[0]  # membrane potential
+            prev_spk = prev_state[1]  # previous spikes
+
+        # recurrent current
+        rec = self.rec(prev_spk)
+
+        # Combine feedforward and recurrent currents
+        total_current = ff + rec
+
+        # Apply LIF activation
+        out = torch.ops.SNN_implementation.LIF(total_current, mem, self.beta, self.threshold)
+        spk_out = out[0]  # shape [N, C, H, W]
+        mem_out = out[1]  # shape [N, C, H, W]
+
+        # Create new state compatible with original interface
+        new_state = torch.stack([mem_out, spk_out])
+
+        return spk_out, new_state
