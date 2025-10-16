@@ -15,6 +15,15 @@ from utils.utils import load_model
 from torch.onnx import register_custom_op_symbolic
 from torch.onnx import symbolic_helper as sym_help
 
+
+def set_valueinfo_shape(value_proto, dims):
+    tt = value_proto.type.tensor_type
+    # clear existing dims
+    tt.shape.dim.clear()
+    for d in dims:
+        di = tt.shape.dim.add()
+        di.dim_value = int(d)
+
 def lif_leaky_symbolic(g, input, mem, beta, threshold):
     return g.op("SNN_implementation::LIF", input, mem, beta, threshold, outputs=2)
 
@@ -123,8 +132,34 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                      event_cnt=event_cnt.cpu().numpy().astype(np.float32))
 
             # Run model to get output
+            # Register hooks on Conv2d modules to capture their output shapes
+            conv_out_shapes = []
+            hooks = []
+            def make_hook():
+                def hook(module, inp, out):
+                    o = out
+                    try:
+                        if isinstance(o, torch.Tensor):
+                            conv_out_shapes.append(tuple(o.shape))
+                        elif isinstance(o, (list, tuple)) and len(o) > 0 and isinstance(o[0], torch.Tensor):
+                            conv_out_shapes.append(tuple(o[0].shape))
+                    except Exception:
+                        pass
+                return hook
+
+            for m in model.modules():
+                if isinstance(m, torch.nn.Conv2d):
+                    hooks.append(m.register_forward_hook(make_hook()))
+
             model.reset_states()
             x = model(event_voxel, event_cnt)
+
+            # Remove hooks
+            for h in hooks:
+                try:
+                    h.remove()
+                except Exception:
+                    pass
             flow = x["flow"][0].cpu().numpy().astype(np.float32)
             np.savez('exported_models/outputs.npz', flow=flow)
 
@@ -171,6 +206,71 @@ def export_to_onnx(args, config_parser, export_quantized=False):
 
             # Verify the exported model
             onnx_model = onnx.load(onnx_file_path)
+            # Fix output/value_info shapes for clearer graphs (LIF nodes)
+            try:
+                # set flow output shape from example saved flow (add batch dim)
+                flow_shape = list(flow.shape)
+                flow_out_shape = [1] + flow_shape
+                names_to_fix = ["flow"]
+                for name in names_to_fix:
+                    found = False
+                    for out in onnx_model.graph.output:
+                        if out.name == name:
+                            set_valueinfo_shape(out, flow_out_shape)
+                            found = True
+                            break
+                    if not found:
+                        vi = onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, flow_out_shape)
+                        onnx_model.graph.output.append(vi)
+
+                # For internal LIF nodes, set their shape to match the output of
+                # the previous convolution. We use the ordered list collected
+                # by the Conv2d forward hooks during the example run.
+                try:
+                    conv_shapes = [list(s) for s in conv_out_shapes]
+                    lif_vi_list = [vi for vi in onnx_model.graph.value_info if vi.name.startswith("LIF") or "LIF" in vi.name]
+                    for i, vi in enumerate(lif_vi_list):
+                        if i < len(conv_shapes):
+                            set_valueinfo_shape(vi, conv_shapes[i])
+                        elif len(conv_shapes) > 0:
+                            # fallback to last conv shape
+                            set_valueinfo_shape(vi, conv_shapes[-1])
+                except Exception:
+                    pass
+                # Also ensure Conv node outputs have explicit value_info shapes
+                try:
+                    # collect Conv node output names in graph order
+                    conv_node_outputs = []
+                    for n in onnx_model.graph.node:
+                        if n.op_type == 'Conv':
+                            # take first output name if present
+                            if len(n.output) > 0:
+                                conv_node_outputs.append(n.output[0])
+
+                    # assign shapes from conv_shapes to these outputs
+                    for i, out_name in enumerate(conv_node_outputs):
+                        target_shape = None
+                        if i < len(conv_shapes):
+                            target_shape = conv_shapes[i]
+                        elif len(conv_shapes) > 0:
+                            target_shape = conv_shapes[-1]
+                        if target_shape is not None:
+                            # find existing value_info or append new one
+                            found = False
+                            for vi in onnx_model.graph.value_info:
+                                if vi.name == out_name:
+                                    set_valueinfo_shape(vi, target_shape)
+                                    found = True
+                                    break
+                            if not found:
+                                vi = onnx.helper.make_tensor_value_info(out_name, onnx.TensorProto.FLOAT, target_shape)
+                                onnx_model.graph.value_info.append(vi)
+                except Exception:
+                    pass
+
+            except Exception as e:
+                print("Warning: failed to fix value_info shapes:", e)
+
             onnx.checker.check_model(onnx_model)
             print(f"ONNX model exported successfully and verified!")
 

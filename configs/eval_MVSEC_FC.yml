@@ -28,7 +28,7 @@ vis:
     px: 400
     bars: True
     activity: False
-    store: True
+    store: False
     store_interval: 0.0  # store every x seconds, 0.0 to disable
     store_type: video # video or image
 
