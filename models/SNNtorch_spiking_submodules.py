@@ -381,7 +381,8 @@ class custom_ConvLIF(nn.Module):
 
         # Extract membrane potential from prev_state for compatibility
         if prev_state is None:
-            mem = None
+            # Initialize membrane with random values in [0.0, 0.8]
+            mem = torch.rand_like(ff) * 0.8
         else:
             mem = prev_state[0]  # First element is membrane potential
 
@@ -448,8 +449,10 @@ class custom_ConvLIFRecurrent(nn.Module):
 
         # Extract membrane potential and previous spikes from prev_state
         if prev_state is None:
-            mem = None
-            prev_spk = torch.zeros_like(ff)
+            # Initialize membrane with random values in [0.0, 0.8]
+            mem = torch.rand_like(ff) * 0.8
+            # Initialize previous spikes as random binary {0,1}
+            prev_spk = (torch.rand_like(ff) > 0.5).to(ff.dtype)
         else:
             mem = prev_state[0]  # membrane potential
             prev_spk = prev_state[1]  # previous spikes
