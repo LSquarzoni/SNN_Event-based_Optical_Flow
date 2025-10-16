@@ -23,7 +23,6 @@ from utils.iwe import compute_pol_iwe
 from utils.utils import load_model, create_model_dir
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization, vis_activity
-from utils.visualization_fc import FCVisualization
 
 def test(args, config_parser):
     mlflow.set_tracking_uri(args.path_mlflow)
@@ -77,16 +76,16 @@ def test(args, config_parser):
     vis = None
     if config["vis"]["enabled"] or config["vis"]["store"]:
         # Use specialized FC visualization (8x8, vectors + GT gradient, video only)
-        vis = FCVisualization(config, eval_id=eval_id, path_results=path_results)
+        vis = Visualization(config, eval_id=eval_id, path_results=path_results)
 
     # model initialization and settings
     #model_path_dir = "mlruns/0/models/LIF_FC_3l/28/model.pth" # runid: 2a74ca0b11eb4ba69f4a550c20331119
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC/29/model.pth" # runid: a9d7723f16d544bfa155282fc231ac1b
-    #model_path_dir = "mlruns/0/models/LIF_FC_newOUT/18/model.pth" # runid: 15a795fdc3e343019118f363e947be7d
+    model_path_dir = "mlruns/0/models/LIF_FC_newOUT/18/model.pth" # runid: 15a795fdc3e343019118f363e947be7d
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newOUT/11/model.pth" # runid: 9311acda2e714108bc3779b439b1639f
     #model_path_dir = "mlruns/0/models/LIF_FC_newIN/32/model.pth" # runid: 043cad279b7b4194b4cde29330ca03a8
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN//model.pth" # runid:
-    model_path_dir = "mlruns/0/models/LIF_FC_newIN_OUT/21/model.pth" # runid: 4a4532f90d1e4863be45632a806b1d39
+    #model_path_dir = "mlruns/0/models/LIF_FC_newIN_OUT/21/model.pth" # runid: 4a4532f90d1e4863be45632a806b1d39
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN_OUT//model.pth" # runid:
     
     model = eval(config["model"]["name"])().to(device)

@@ -17,6 +17,11 @@ class Visualization:
         self.img_idx = 0
         self.px = kwargs["vis"]["px"]
         self.color_scheme = "green_red"  # gray / blue_red / green_red
+        # visualization brightness scale for flow images (1.0 = unchanged)
+        self.v_scale = float(kwargs["vis"].get("v_scale", 0.5))
+        # value (V) to use for uniform non-zero flow fields (0..1). This
+        # prevents uniform fields from being mapped to full brightness.
+        self.v_uniform = float(kwargs["vis"].get("v_uniform", 0.5))
         self.last_store_ts = None  # for controlling store rate
         self.store_interval = kwargs["vis"].get("store_interval", 5.0)  # seconds
         self.vis_type = vis_type
@@ -132,6 +137,7 @@ class Visualization:
                 )
             else:
                 flow_npy = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
+                flow_npy = self._apply_v_scale(flow_npy)
                 flow_npy = cv2.cvtColor(flow_npy, cv2.COLOR_RGB2BGR)
             cv2.namedWindow("Estimated Flow", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Estimated Flow", int(self.px), int(self.px))
@@ -158,8 +164,9 @@ class Visualization:
                 )
             else:
                 masked_window_flow_npy = self.flow_to_image(
-                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
+                    masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1], uniform_v=self.v_uniform
                 )
+                masked_window_flow_npy = self._apply_v_scale(masked_window_flow_npy)
                 masked_window_flow_npy = cv2.cvtColor(masked_window_flow_npy, cv2.COLOR_RGB2BGR)
             cv2.namedWindow("Estimated Flow - Eval window", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Estimated Flow - Eval window", int(self.px), int(self.px))
@@ -293,7 +300,8 @@ class Visualization:
             flow = flow.detach()
             flow_h, flow_w = flow.shape[2], flow.shape[3]
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
-            flow_grad_img = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1])
+            flow_grad_img = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1], uniform_v=self.v_uniform)
+            flow_grad_img = self._apply_v_scale(flow_grad_img)
             flow_grad_img = cv2.cvtColor(flow_grad_img, cv2.COLOR_RGB2BGR)
             if self.store_type == "image":
                 filename = path_to + "flow/%09d.png" % self.img_idx
@@ -318,6 +326,7 @@ class Visualization:
             masked_grad_img = self.flow_to_image(
                 masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
             )
+            masked_grad_img = self._apply_v_scale(masked_grad_img)
             masked_grad_img = cv2.cvtColor(masked_grad_img, cv2.COLOR_RGB2BGR)
             if self.store_type == "image":
                 filename = path_to + "masked_flow_grad/%09d.png" % self.img_idx
@@ -432,8 +441,25 @@ class Visualization:
             for writer in self.video_writers.values():
                 writer.release()
 
+    def _apply_v_scale(self, img):
+        """Apply a simple brightness scale to an RGB uint8 image.
+
+        img: HxWx3 uint8 RGB image coming from flow_to_image (0-255)
+        Returns scaled uint8 image clipped to [0,255].
+        """
+        if not hasattr(self, "v_scale") or self.v_scale == 1.0:
+            return img
+        try:
+            f = float(self.v_scale)
+        except Exception:
+            return img
+        if f <= 0:
+            return np.zeros_like(img, dtype=np.uint8)
+        scaled = (img.astype(np.float32) * f).clip(0, 255).astype(np.uint8)
+        return scaled
+
     @staticmethod
-    def flow_to_image(flow_x, flow_y):
+    def flow_to_image(flow_x, flow_y, uniform_v=None):
         """
         Use the optical flow color scheme from the supplementary materials of the paper 'Back to Event
         Basics: Self-Supervised Image Reconstruction for Event Cameras via Photometric Constancy',
@@ -443,19 +469,33 @@ class Visualization:
         :return flow_rgb: [H x W x 3] color-encoded optical flow
         """
         flows = np.stack((flow_x, flow_y), axis=2)
-        mag = np.linalg.norm(flows, axis=2)
-        min_mag = np.min(mag)
-        mag_range = np.max(mag) - min_mag
+        mag = np.linalg.norm(flows, axis=2).astype(float)
+        min_mag = float(np.min(mag))
+        max_mag = float(np.max(mag))
+        mag_range = max_mag - min_mag
 
         ang = np.arctan2(flow_y, flow_x) + np.pi
         ang *= 1.0 / np.pi / 2.0
 
-        hsv = np.zeros([flow_x.shape[0], flow_x.shape[1], 3])
+        hsv = np.zeros([flow_x.shape[0], flow_x.shape[1], 3], dtype=float)
         hsv[:, :, 0] = ang
         hsv[:, :, 1] = 1.0
-        hsv[:, :, 2] = mag - min_mag
-        if mag_range != 0.0:
-            hsv[:, :, 2] /= mag_range
+
+        # Value channel (brightness) - robust to uniform fields
+        if mag_range > 0.0:
+            # Normal case: spread values linearly between min and max
+            hsv[:, :, 2] = (mag - min_mag) / mag_range
+        else:
+            # Uniform magnitude across the field. If magnitude is non-zero,
+            # show it with a scaled brightness so it isn't full-white by
+            # default (use uniform_v to control). If zero everywhere, leave as black.
+            if max_mag > 0.0:
+                v = mag / max_mag
+                if uniform_v is not None:
+                    v = v * float(uniform_v)
+                hsv[:, :, 2] = v
+            else:
+                hsv[:, :, 2] = 0.0
 
         flow_rgb = matplotlib.colors.hsv_to_rgb(hsv)
         return (255 * flow_rgb).astype(np.uint8)
@@ -501,7 +541,8 @@ class Visualization:
         # Precompute magnitude and angular mapping for color coding
         mag = np.sqrt(fx ** 2 + fy ** 2)
         min_mag = float(np.min(mag))
-        mag_range = float(np.max(mag) - min_mag)
+        max_mag = float(np.max(mag))
+        mag_range = float(max_mag - min_mag)
 
         if center:
             # compute average flow over pixels above min_magnitude
@@ -600,9 +641,14 @@ class Visualization:
             # the arrow geometry is inverted for visualization.
             ang = np.arctan2(avg_dy, avg_dx) + np.pi
             ang *= 1.0 / np.pi / 2.0
-            hsv = np.array([ang, 1.0, (avg_mag - min_mag)])
+            # Robustly compute the value (brightness) channel. If the field is
+            # uniform (mag_range == 0) but non-zero, show relative brightness
+            # as avg_mag / max_mag so arrows are visible instead of black.
             if mag_range != 0.0:
-                hsv[2] = hsv[2] / mag_range
+                v = (avg_mag - min_mag) / mag_range
+            else:
+                v = (avg_mag / max_mag) if max_mag > 0.0 else 0.0
+            hsv = np.array([ang, 1.0, v])
             rgb = matplotlib.colors.hsv_to_rgb(hsv)
             # convert to BGR 0-255 ints for OpenCV
             arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
@@ -637,11 +683,11 @@ class Visualization:
                 # (do not invert) so colors correspond to the true flow direction
                 ang = np.arctan2(dy, dx) + np.pi
                 ang *= 1.0 / np.pi / 2.0
-                v = mag - min_mag
+                # Robust brightness normalization similar to flow_to_image.
                 if mag_range != 0.0:
-                    v = v / mag_range
+                    v = (mag - min_mag) / mag_range
                 else:
-                    v = 0.0
+                    v = (mag / max_mag) if max_mag > 0.0 else 0.0
                 hsv = np.array([ang, 1.0, v])
                 rgb = matplotlib.colors.hsv_to_rgb(hsv)
                 arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
