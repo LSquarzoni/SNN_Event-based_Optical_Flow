@@ -160,7 +160,20 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     h.remove()
                 except Exception:
                     pass
-            flow = x["flow"][0].cpu().numpy().astype(np.float32)
+            # Extract flow array robustly (handle tensor or list/tuple outputs)
+            flow_out_obj = x.get("flow") if isinstance(x, dict) else None
+            if flow_out_obj is None:
+                flow_arr = np.array([])
+            else:
+                if isinstance(flow_out_obj, torch.Tensor):
+                    flow_arr = flow_out_obj.cpu().numpy()
+                elif isinstance(flow_out_obj, (list, tuple)) and len(flow_out_obj) > 0 and isinstance(flow_out_obj[0], torch.Tensor):
+                    flow_arr = flow_out_obj[0].cpu().numpy()
+                else:
+                    # fallback
+                    flow_arr = np.asarray(flow_out_obj)
+
+            flow = flow_arr.astype(np.float32)
             np.savez('exported_models/outputs.npz', flow=flow)
 
             # Export paths
@@ -208,9 +221,13 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             onnx_model = onnx.load(onnx_file_path)
             # Fix output/value_info shapes for clearer graphs (LIF nodes)
             try:
-                # set flow output shape from example saved flow (add batch dim)
+                # set flow output shape from example saved flow
+                # Use the last 4 dimensions as (N, C, H, W) to avoid double-prepending
                 flow_shape = list(flow.shape)
-                flow_out_shape = [1] + flow_shape
+                if flow.ndim >= 4:
+                    flow_out_shape = list(flow.shape[-4:])
+                else:
+                    flow_out_shape = [1] + flow_shape
                 names_to_fix = ["flow"]
                 for name in names_to_fix:
                     found = False
@@ -223,31 +240,17 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                         vi = onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, flow_out_shape)
                         onnx_model.graph.output.append(vi)
 
-                # For internal LIF nodes, set their shape to match the output of
-                # the previous convolution. We use the ordered list collected
-                # by the Conv2d forward hooks during the example run.
-                try:
-                    conv_shapes = [list(s) for s in conv_out_shapes]
-                    lif_vi_list = [vi for vi in onnx_model.graph.value_info if vi.name.startswith("LIF") or "LIF" in vi.name]
-                    for i, vi in enumerate(lif_vi_list):
-                        if i < len(conv_shapes):
-                            set_valueinfo_shape(vi, conv_shapes[i])
-                        elif len(conv_shapes) > 0:
-                            # fallback to last conv shape
-                            set_valueinfo_shape(vi, conv_shapes[-1])
-                except Exception:
-                    pass
                 # Also ensure Conv node outputs have explicit value_info shapes
                 try:
-                    # collect Conv node output names in graph order
+                    # Build conv shapes from runtime and map them onto Conv nodes in the ONNX graph
+                    conv_shapes = [list(s) for s in conv_out_shapes]
                     conv_node_outputs = []
                     for n in onnx_model.graph.node:
                         if n.op_type == 'Conv':
-                            # take first output name if present
                             if len(n.output) > 0:
                                 conv_node_outputs.append(n.output[0])
 
-                    # assign shapes from conv_shapes to these outputs
+                    # Assign shapes from conv_shapes list to conv outputs in graph order
                     for i, out_name in enumerate(conv_node_outputs):
                         target_shape = None
                         if i < len(conv_shapes):
@@ -255,7 +258,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                         elif len(conv_shapes) > 0:
                             target_shape = conv_shapes[-1]
                         if target_shape is not None:
-                            # find existing value_info or append new one
+                            # update or append value_info
                             found = False
                             for vi in onnx_model.graph.value_info:
                                 if vi.name == out_name:
@@ -265,6 +268,80 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                             if not found:
                                 vi = onnx.helper.make_tensor_value_info(out_name, onnx.TensorProto.FLOAT, target_shape)
                                 onnx_model.graph.value_info.append(vi)
+
+                    # Build mapping conv_output_name -> shape for quick lookup
+                    conv_output_shape_by_name = {}
+                    for i, out_name in enumerate(conv_node_outputs):
+                        if i < len(conv_shapes):
+                            conv_output_shape_by_name[out_name] = conv_shapes[i]
+                        elif len(conv_shapes) > 0:
+                            conv_output_shape_by_name[out_name] = conv_shapes[-1]
+
+                    # 1) Try shape inference now that conv outputs have shapes. This should populate Add outputs, etc.
+                    try:
+                        inferred_model = onnx.shape_inference.infer_shapes(onnx_model)
+                        # Replace model with inferred one for downstream edits
+                        onnx_model = inferred_model
+                    except Exception:
+                        # If inference fails, continue with manual heuristics
+                        pass
+
+                    # 2) Build a lookup of all known value_info shapes (post-inference if succeeded)
+                    value_info_shape_by_name = {}
+                    def collect_shapes_from_value_info(model):
+                        for vi in list(model.graph.value_info) + list(model.graph.output) + list(model.graph.input):
+                            if not hasattr(vi, 'type'):
+                                continue
+                            tt = vi.type.tensor_type
+                            if not hasattr(tt, 'shape'):
+                                continue
+                            dims = []
+                            for d in tt.shape.dim:
+                                if getattr(d, 'dim_value', 0):
+                                    dims.append(int(d.dim_value))
+                                else:
+                                    dims = []
+                                    break
+                            if dims:
+                                value_info_shape_by_name[vi.name] = dims
+
+                    collect_shapes_from_value_info(onnx_model)
+
+                    # 3) For each LIF node, set outputs to match the shape of its first input.
+                    # Prefer shapes from value_info (post-inference). Fall back to conv mapping and name heuristics.
+                    def find_shape_for_input_name(name):
+                        # direct value_info mapping first
+                        if name in value_info_shape_by_name:
+                            return value_info_shape_by_name[name]
+                        # conv direct mapping
+                        if name in conv_output_shape_by_name:
+                            return conv_output_shape_by_name[name]
+                        # try suffix and last-segment matches against conv outputs
+                        for k, v in conv_output_shape_by_name.items():
+                            if k.endswith(name) or name.endswith(k):
+                                return v
+                        base = name.split('/')[-1]
+                        for k, v in conv_output_shape_by_name.items():
+                            if k.split('/')[-1] == base:
+                                return v
+                        return None
+
+                    for n in onnx_model.graph.node:
+                        if (n.domain == 'SNN_implementation') or (n.op_type == 'LIF') or ('LIF' in n.op_type):
+                            if len(n.input) > 0:
+                                inp0 = n.input[0]
+                                target_shape = find_shape_for_input_name(inp0)
+                                if target_shape is not None:
+                                    for out_name in n.output:
+                                        updated = False
+                                        for vi in onnx_model.graph.value_info:
+                                            if vi.name == out_name:
+                                                set_valueinfo_shape(vi, target_shape)
+                                                updated = True
+                                                break
+                                        if not updated:
+                                            vi = onnx.helper.make_tensor_value_info(out_name, onnx.TensorProto.FLOAT, target_shape)
+                                            onnx_model.graph.value_info.append(vi)
                 except Exception:
                     pass
 
@@ -273,6 +350,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
 
             onnx.checker.check_model(onnx_model)
             print(f"ONNX model exported successfully and verified!")
+            onnx.save(onnx_model, onnx_file_path)
 
             simpler_model, check = simplify(onnx_model)
             if check:
