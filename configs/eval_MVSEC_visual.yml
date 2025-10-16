@@ -34,7 +34,7 @@ vis:
     activity: False
     store: True
     store_interval: 0.0  # store every x seconds, 0.0 to disable
-    type: vectors # gradients or vectors
+    #type: vectors # gradients or vectors
     store_type: video # video or image
 
 hot_filter:

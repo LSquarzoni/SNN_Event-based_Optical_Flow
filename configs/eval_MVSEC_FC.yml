@@ -9,7 +9,7 @@ model:
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     num_bins: 2
-    temporal_cnt: True # if True, use temporal cnt input encoding
+    temporal_cnt: False # if True, use temporal cnt input encoding
 
 metrics:
     name: [AEE, AE]  # AEE, NEE, AE
@@ -28,7 +28,9 @@ vis:
     px: 400
     bars: True
     activity: False
-    store: False
+    store: True
+    store_interval: 0.0  # store every x seconds, 0.0 to disable
+    store_type: video # video or image
 
 hot_filter:
     enabled: True

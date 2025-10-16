@@ -159,7 +159,7 @@ class FireNet(BaseModel):
 
         # Predict dense flow then pool to a single (x, y) pair per sample
         flow = self.pred(x7)  # [B, 2, H, W]
-        flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
+        #flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
 
         # log activity
         if log:
