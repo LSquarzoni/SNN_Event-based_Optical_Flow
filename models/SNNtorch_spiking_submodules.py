@@ -131,6 +131,11 @@ class SNNtorch_ConvLIF(nn.Module):
         w_scale = math.sqrt(1 / input_size)
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
+        # Register fixed initializers so ONNX export contains clear constants
+        # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
+        init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
+        self.register_buffer("init_mem", init_mem)
+
         # Store detach option for compatibility
         self.detach = detach
 
@@ -272,6 +277,13 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         w_scale_rec = math.sqrt(1 / hidden_size)
         nn.init.uniform_(self.ff.weight, -w_scale_ff, w_scale_ff)
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
+        # Register fixed initializers so ONNX export contains clear constants
+        # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
+        init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
+        self.register_buffer("init_mem", init_mem)
+        # init_prev_spk: random binary {0,1} values with shape [1, C, 1, 1]
+        init_prev_spk = (torch.rand(1, hidden_size, 1, 1) > 0.5).to(torch.float32)
+        self.register_buffer("init_prev_spk", init_prev_spk)
 
         # Store detach option for compatibility
         self.detach = detach
@@ -376,12 +388,15 @@ class custom_ConvLIF(nn.Module):
         w_scale = math.sqrt(1 / input_size)
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
+        # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
+        self.init_mem = torch.rand(1, hidden_size, 32, 32) * 0.8
+
     def forward(self, input_, prev_state):
         ff = self.ff(input_)
 
         # Extract membrane potential from prev_state for compatibility
         if prev_state is None:
-            mem = None
+            mem = self.init_mem
         else:
             mem = prev_state[0]  # First element is membrane potential
 
@@ -443,13 +458,18 @@ class custom_ConvLIFRecurrent(nn.Module):
         nn.init.uniform_(self.ff.weight, -w_scale_ff, w_scale_ff)
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
 
+        # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
+        self.init_mem = torch.rand(1, hidden_size, 32, 32) * 0.8
+        # init_prev_spk: random binary {0,1} values with shape [1, C, H, W]
+        self.init_prev_spk = (torch.rand(1, hidden_size, 32, 32) > 0.5).to(torch.float32)
+
     def forward(self, input_, prev_state):
         ff = self.ff(input_)
 
         # Extract membrane potential and previous spikes from prev_state
         if prev_state is None:
-            mem = None
-            prev_spk = torch.zeros_like(ff)
+            mem = self.init_mem
+            prev_spk = self.init_prev_spk
         else:
             mem = prev_state[0]  # membrane potential
             prev_spk = prev_state[1]  # previous spikes
