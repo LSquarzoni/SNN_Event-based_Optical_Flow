@@ -799,8 +799,8 @@ class SNNtorch_FCLIF(torch.nn.Module):
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
-        #self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
-        self.fc3 = torch.nn.Linear(self.in_features, self.out_features, bias=False)
+        self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        #self.fc3 = torch.nn.Linear(self.in_features, self.out_features, bias=False)
 
         # LIF states
         self.states = [None, None]
@@ -841,8 +841,8 @@ class SNNtorch_FCLIF(torch.nn.Module):
         out = self.fc3(spk2)
 
         # Reshape output
-        #out = out.reshape(B, C, H, W)
-        out = out.reshape(B, C, 1, 1)
+        out = out.reshape(B, C, H, W)
+        #out = out.reshape(B, C, 1, 1)
 
         # Always update self.states with new membrane values
         self.states = [mem1, mem2]
