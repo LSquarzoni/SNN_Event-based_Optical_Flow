@@ -30,7 +30,7 @@ class PatchH5Loader(BaseDataLoader):
             raise ValueError("PatchH5Loader supports only data.mode == 'events'")
 
         # Patch settings
-        self.patch_size = tuple(self.config["loader"].get("patch_size", [8, 8]))  # (H, W)
+        self.patch_size = tuple(self.config["loader"].get("patch_size", [64, 64]))  # (H, W)
         self.patch_stride = tuple(self.config["loader"].get("patch_stride", list(self.patch_size)))
 
         # Full sensor resolution (H, W) as defined in config

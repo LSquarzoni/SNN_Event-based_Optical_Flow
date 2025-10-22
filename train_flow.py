@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 
 import mlflow
 import torch
@@ -19,6 +20,7 @@ from models.model import (
     LIFFireNet_short,
     LIFFireFlowNet,
     LIFFireFlowNet_short,
+    FC_1l_100x100
 )
 from utils.gradients import get_grads
 from utils.utils import load_model, save_csv, save_diff, save_model
@@ -184,6 +186,8 @@ def train(args, config_parser):
     best_val_aee = 1.0e6  # Track best validation AEE
     end_train = False
     grads_w = []
+    checkpoint_counter = 0  # Counter for checkpoint folders
+    last_checkpoint_path = None  # Path to the last saved checkpoint
 
     # training loop
     data.shuffle()
@@ -229,8 +233,26 @@ def train(args, config_parser):
 
                     # Save model if combined metric improves
                     if current_metric < best_metric - 1e-6:
-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_newOUT/")
-                        os.makedirs(model_save_path, exist_ok=True)
+                        # Delete previous checkpoint folder if it exists
+                        if last_checkpoint_path is not None and os.path.exists(last_checkpoint_path):
+                            try:
+                                shutil.rmtree(last_checkpoint_path)
+                                print(f"Deleted previous checkpoint: {last_checkpoint_path}")
+                            except Exception as e:
+                                print(f"Warning: Could not delete previous checkpoint: {e}")
+                        
+                        # Create new checkpoint folder with incremented counter
+                        base_model_path = "/scratch2/msc25h1/models/FC_1l_100x100/"
+                        model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
+                        
+                        try:
+                            os.makedirs(model_save_path, exist_ok=True)
+                            print(f"Created checkpoint directory: {model_save_path}")
+                        except Exception as e:
+                            print(f"Error creating directory {model_save_path}: {e}")
+                            print(f"Attempting to create parent directory {base_model_path}")
+                            os.makedirs(base_model_path, exist_ok=True)
+                            os.makedirs(model_save_path, exist_ok=True)
 
                         save_data = {
                             'model_state_dict': model.state_dict(),
@@ -242,8 +264,28 @@ def train(args, config_parser):
                         if validation_enabled:
                             save_data['validation_results'] = val_results
 
-                        torch.save(save_data, os.path.join(model_save_path, 'model.pth'))
-                        mlflow.log_artifact(os.path.join(model_save_path, 'model.pth'))
+                        model_pth_path = os.path.join(model_save_path, 'model.pth')
+                        try:
+                            # Save to temporary file first, then rename (atomic operation on most filesystems)
+                            temp_path = model_pth_path + '.tmp'
+                            torch.save(save_data, temp_path)
+                            # Rename temp file to final name (more atomic than direct write)
+                            os.replace(temp_path, model_pth_path)
+                            print(f"Model checkpoint saved to: {model_pth_path}")
+                            
+                            try:
+                                mlflow.log_artifact(model_pth_path)
+                            except Exception as e:
+                                print(f"Warning: Could not log artifact to mlflow: {e}")
+                            
+                            # Update checkpoint tracking
+                            last_checkpoint_path = model_save_path
+                            checkpoint_counter += 1
+                        except Exception as e:
+                            print(f"Error saving checkpoint to {model_pth_path}: {e}")
+                            print(f"Available space in {base_model_path}:")
+                            os.system(f"df -h {base_model_path}")
+                            raise
 
                         if validation_enabled and val_results:
                             best_val_aee = val_results.get('AEE', best_val_aee)

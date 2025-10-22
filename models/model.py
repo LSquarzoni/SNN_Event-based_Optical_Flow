@@ -773,7 +773,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
         super().__init__()
         self.detach = detach
         # Fixed input resolution: C=2, H=8, W=8
-        self.in_features = 2 * 8 * 8  # 128
+        self.in_features = 2 * 64 * 64  # 8192
         self.out_features = 2 # only one x and y flow output
         self.leak = leak
         self.thresh = thresh
@@ -785,7 +785,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
             threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
             learn_beta=True,
             learn_threshold=True,
-            reset_mechanism="zero",
+            reset_mechanism="subtract", # zero
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
@@ -795,7 +795,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
             threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
             learn_beta=True,
             learn_threshold=True,
-            reset_mechanism="zero",
+            reset_mechanism="subtract", # zero
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
@@ -951,5 +951,64 @@ class SNNtorch_ConvFCLIF(torch.nn.Module):
         self.states = [mem_conv, mem1, mem2]
 
         new_state = [mem_conv, mem1, mem2]
+
+        return {"flow": [out], "state": new_state}
+    
+    
+class FC_1l_100x100(torch.nn.Module):
+    def __init__(self, unet_kwargs=None, leak=(0.0, 1.0), thresh=(0.0, 0.8), detach=True):
+        super().__init__()
+        self.detach = detach
+        # Fixed input resolution: C=2, H=100, W=100
+        self.in_features = 2 * 100 * 100  # 20000
+
+        # Get mask_output from config if provided, otherwise default to True
+        self.mask = True if unet_kwargs is None else unet_kwargs.get("mask_output", True)
+
+        # Layers defined up-front to register parameters before optimizer creation
+        self.fc = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+
+        # LIF states
+        self.states = [None]
+
+    def reset_states(self):
+        self.states = [None]
+
+    def detach_states(self):
+        detached_states = []
+        for state in self.states:
+            if state is not None:
+                detached_states.append(state.detach())
+            else:
+                detached_states.append(None)
+        self.states = detached_states
+
+    def forward(self, input_, prev_state=None, log=False):
+        # input_: [B, C, H, W]
+        B, C, H, W = input_.shape
+        flattened_size = C * H * W
+        # Sanity check for expected input size
+        if flattened_size != self.in_features:
+            raise ValueError(f"SNNtorch_FCLIF expects C*H*W={self.in_features}, got {flattened_size} (C={C}, H={H}, W={W}).")
+
+        # Reshape input to [B, C*H*W]
+        x = input_.reshape(B, self.in_features)
+
+        # Use prev_state if provided, otherwise use self.states
+        if prev_state is not None:
+            mem = prev_state
+        else:
+            mem = self.states
+
+        # Block 1: FC -> LIF
+        x1 = self.fc(x)
+
+        # Reshape output
+        out = x1.reshape(B, C, H, W)
+
+        # Always update self.states with new membrane values
+        self.states = [mem]
+
+        new_state = [mem]
 
         return {"flow": [out], "state": new_state}
