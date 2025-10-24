@@ -87,7 +87,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN//model.pth" # runid:
     #model_path_dir = "mlruns/0/models/LIF_FC_newIN_OUT/21/model.pth" # runid: 4a4532f90d1e4863be45632a806b1d39
     #model_path_dir = "mlruns/0/models/LIF_Conv_FC_newIN_OUT//model.pth" # runid:
-    model_path_dir = "/scratch2/msc25h1/models/LIF_FC_attempt2/0/model.pth" # runid: 5a5c4048f888433ea507930fce247283
+    model_path_dir = "/scratch2/msc25h1/models/LIF_FC_attempt2/0/model.pth" # runid: 
     
     model = eval(config["model"]["name"])().to(device)
     

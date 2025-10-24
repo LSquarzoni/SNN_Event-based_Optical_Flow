@@ -639,9 +639,9 @@ class LIFFireNet_short(FireNet_short):
     """
     Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
     """
-    head_neuron = custom_ConvLIF
-    ff_neuron = custom_ConvLIF
-    rec_neuron = custom_ConvLIFRecurrent
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -785,7 +785,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
             threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
             learn_beta=True,
             learn_threshold=True,
-            reset_mechanism="subtract", # zero
+            reset_mechanism="zero", # zero
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
@@ -795,7 +795,7 @@ class SNNtorch_FCLIF(torch.nn.Module):
             threshold=torch.nn.Parameter(torch.empty(self.in_features).uniform_(self.thresh[0], self.thresh[1])),
             learn_beta=True,
             learn_threshold=True,
-            reset_mechanism="subtract", # zero
+            reset_mechanism="zero", # zero
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )

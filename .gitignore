@@ -8,3 +8,4 @@ venv/
 datasets/
 exported_models/
 /build/
+/plots
