@@ -628,9 +628,9 @@ class LIFFireNet(FireNet):
     """
     Spiking FireNet architecture of LIF neurons for dense optical flow estimation from events.
     """
-    head_neuron = custom_ConvLIF
-    ff_neuron = custom_ConvLIF
-    rec_neuron = custom_ConvLIFRecurrent
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -897,8 +897,8 @@ class SNNtorch_ConvFCLIF(torch.nn.Module):
             reset_delay=False,
             spike_grad=snn.surrogate.atan(alpha=2),
         )
-        #self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
-        self.fc3 = torch.nn.Linear(self.in_features, self.out_features, bias=False)
+        self.fc3 = torch.nn.Linear(self.in_features, self.in_features, bias=False)
+        #self.fc3 = torch.nn.Linear(self.in_features, self.out_features, bias=False)
         # LIF states
         self.states = [None, None, None]
 
@@ -944,8 +944,8 @@ class SNNtorch_ConvFCLIF(torch.nn.Module):
         out = self.fc3(spk2)
 
         # Reshape output
-        #out = out.reshape(B, C, H, W)
-        out = out.reshape(B, C, 1, 1)
+        out = out.reshape(B, C, H, W)
+        #out = out.reshape(B, C, 1, 1)
 
         # Always update self.states with new membrane values
         self.states = [mem_conv, mem1, mem2]

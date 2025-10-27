@@ -173,7 +173,7 @@ class SNNtorch_ConvLIF(nn.Module):
         # Create new state compatible with original interface
         new_state = torch.stack([mem_out, spk])
 
-        return spk + residual, new_state
+        return spk, new_state
     
 class SNNtorch_ConvLIFRecurrent(nn.Module):
     """
@@ -303,7 +303,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.norm_ff = None
             self.norm_rec = None
 
-    def forward(self, input_, prev_state):
+    def forward(self, input_, prev_state, residual=0):
         self.lif.threshold.data.clamp_(min=0.01)
         
         # input current

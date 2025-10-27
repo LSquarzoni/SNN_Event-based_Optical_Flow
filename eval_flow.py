@@ -1,4 +1,5 @@
 import argparse
+import os
 
 import mlflow
 import numpy as np
@@ -366,6 +367,7 @@ def test(args, config_parser):
                                 val_metric = criteria[i]()
                                 if metric == "AEE":
                                     idx_AEE = 0
+                                
                                 # accumulate results
                                 for batch in range(config["loader"]["batch_size"]):
                                     filename = data.files[data.batch_idx[batch] % len(data.files)].split("/")[-1]
@@ -440,6 +442,24 @@ def test(args, config_parser):
                         val_results[key][metric]["percent"] / val_results[key][metric]["it"]
                     )
             log_results(args.runid, results, path_results, eval_id)
+
+    # Save aggregated error heatmaps if enabled
+    if not args.debug and "metrics" in config.keys() and config["metrics"].get("heat_map", False):
+        print("\nSaving aggregated error heatmaps...")
+        for i, metric in enumerate(config["metrics"]["name"]):
+            if metric in ["AEE", "AE"]:  # Only these metrics support heatmap visualization
+                heatmap_dir = os.path.join(path_results, "heatmaps")
+                os.makedirs(heatmap_dir, exist_ok=True)
+                
+                heatmap_path = os.path.join(heatmap_dir, f"{metric}_heatmap.png")
+                success = criteria[i].save_error_heatmap(
+                    save_path=heatmap_path,
+                    title=f"Aggregated {metric} Error Distribution (Full Evaluation)"
+                )
+                if success:
+                    print(f"  ✓ Saved {metric} heatmap to {heatmap_path}")
+                else:
+                    print(f"  ✗ Failed to save {metric} heatmap")
 
     # Close video writers if needed
     if vis is not None and config["vis"]["store_type"] == "video":

@@ -3,6 +3,9 @@ import sys
 
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+from matplotlib import cm
+import matplotlib.patches as mpatches
 
 parent_dir_name = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(parent_dir_name)
@@ -367,6 +370,11 @@ class BaseValidationLoss(torch.nn.Module):
         self._flow_map = None
         self._pol_mask_list = None
         self._event_mask = None
+        
+        # Aggregated error heatmap storage for visualization across all batches
+        self._aggregated_error_map = None
+        self._aggregated_mask_map = None
+        self._std_resolution = config["loader"].get("std_resolution", self.res)  # Full resolution for heatmaps
 
     @property
     def num_events(self):
@@ -516,6 +524,113 @@ class BaseValidationLoss(torch.nn.Module):
 
         return torch.cat([fw_iwe_pos, fw_iwe_neg], dim=1)
 
+    def accumulate_error_heatmap(self, error_map, mask_map):
+        """
+        Accumulate error heatmap across batches for final aggregated visualization.
+        Accumulates WEIGHTED errors: sum(error * mask) and sum(mask), then divides to get mean.
+        
+        :param error_map: [batch_size x H x W] per-pixel errors (from current batch)
+        :param mask_map: [batch_size x H x W] validity mask (1 = valid pixel, 0 = invalid)
+        """
+        error_map = error_map.detach().cpu().float()
+        mask_map = mask_map.detach().cpu().float()
+        
+        # Only accumulate errors where mask is valid
+        # This gives us sum(error * mask) for weighted averaging
+        masked_error = error_map * mask_map
+        batch_error_sum = masked_error.sum(dim=0)  # [H x W] - sum of errors
+        batch_sample_count = mask_map.sum(dim=0)   # [H x W] - count of valid samples
+        
+        if self._aggregated_error_map is None:
+            self._aggregated_error_map = batch_error_sum
+            self._aggregated_mask_map = batch_sample_count
+        else:
+            self._aggregated_error_map += batch_error_sum
+            self._aggregated_mask_map += batch_sample_count
+
+    def get_final_error_heatmap(self):
+        """
+        Get the final aggregated error heatmap with averaged errors.
+        
+        :return: averaged_error_map [H x W], valid_pixel_count [H x W]
+        """
+        if self._aggregated_error_map is None or self._aggregated_mask_map is None:
+            return None, None
+        
+        # Average errors by dividing by pixel count (avoid division by zero)
+        averaged_error = self._aggregated_error_map / (self._aggregated_mask_map + 1e-9)
+        
+        return averaged_error, self._aggregated_mask_map
+
+    def save_error_heatmap(self, save_path, title="Error Heatmap", cmap="jet"):
+        """
+        Save the final aggregated error heatmap as an image.
+        
+        :param save_path: path to save the heatmap image
+        :param title: title of the figure
+        :param cmap: colormap to use (default: 'jet')
+        """
+        try:
+            import matplotlib.pyplot as plt
+        except ImportError:
+            print("Warning: matplotlib not installed. Install with: pip install matplotlib")
+            return False
+        
+        averaged_error, pixel_count = self.get_final_error_heatmap()
+        if averaged_error is None:
+            print("No error heatmap available")
+            return False
+        
+        # Squeeze out batch dimension if present
+        if averaged_error.dim() > 2:
+            averaged_error = averaged_error.squeeze(0)
+        if pixel_count.dim() > 2:
+            pixel_count = pixel_count.squeeze(0)
+        
+        # Create visualization (set pixels with no samples to NaN)
+        error_vis = averaged_error.clone().float()
+        error_vis[pixel_count == 0] = float('nan')
+        
+        # Get valid (non-NaN) values for statistics
+        valid_mask = pixel_count > 0
+        valid_errors = error_vis[valid_mask]
+        
+        # Compute percentiles for better visualization contrast
+        if valid_errors.numel() > 0:
+            p95 = torch.quantile(valid_errors, 0.95)
+            # Clip to 95th percentile for better visualization
+            error_vis_clipped = torch.clamp(error_vis, max=p95)
+        else:
+            error_vis_clipped = error_vis
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        im = ax.imshow(error_vis_clipped.numpy(), cmap=cmap, aspect='auto')
+        ax.set_title(title, fontsize=14)
+        ax.set_xlabel("Width (pixels)")
+        ax.set_ylabel("Height (pixels)")
+        
+        # Add colorbar with min/max info
+        cbar = plt.colorbar(im, ax=ax, label="Average Error (clipped to 95th percentile)")
+        
+        # Add grid
+        ax.grid(True, alpha=0.3)
+        
+        # Save figure
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Heatmap saved to {save_path}")
+        print(f"  Error range: {valid_errors.min():.4f} - {valid_errors.max():.4f} (95th %ile: {p95:.4f})")
+        plt.close(fig)
+        
+        return True
+
+    def reset_error_heatmap(self):
+        """
+        Reset the aggregated error heatmap (useful if you want to re-evaluate).
+        """
+        self._aggregated_error_map = None
+        self._aggregated_mask_map = None
+
 
 class AEE(BaseValidationLoss):
     """
@@ -548,6 +663,10 @@ class AEE(BaseValidationLoss):
         gtflow_mask_y = gtflow[:, 1, :, :] == 0.0
         gtflow_mask = gtflow_mask_x * gtflow_mask_y
         gtflow_mask = ~gtflow_mask
+
+        # Store full error heatmap (before final masking for averaging)
+        full_mask = (event_mask * gtflow_mask).float()
+        self.accumulate_error_heatmap(error, full_mask)
 
         # mask AEE and flow
         mask = event_mask * gtflow_mask
@@ -657,6 +776,11 @@ class AE(BaseValidationLoss):
 
         # Apply masks
         mask = event_mask & gtflow_mask
+        
+        # Accumulate full error heatmap (before final masking for averaging)
+        full_mask = mask.float()
+        self.accumulate_error_heatmap(error, full_mask)
+        
         mask = mask.view(flow.shape[0], -1)
         error = error.view(flow.shape[0], -1)
 

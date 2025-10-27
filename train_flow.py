@@ -242,7 +242,7 @@ def train(args, config_parser):
                                 print(f"Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder with incremented counter
-                        base_model_path = "/scratch2/msc25h1/models/FC_1l_100x100/"
+                        base_model_path = "mlruns/0/models/LIFFN_fullREC/"
                         model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
                         
                         try:

@@ -54,7 +54,7 @@ def train(args, config_parser):
 
     # data loader
     # Ensure resolution used by the loss matches the patch size (e.g., 8x8)
-    patch_size = config["loader"].get("patch_size", [64, 64])
+    patch_size = config["loader"].get("patch_size", [8, 8])
     config["loader"]["resolution"] = patch_size
     config["loader"].setdefault("patch_stride", patch_size)
 
