@@ -1,8 +1,8 @@
 experiment: Default
 
 data:
-    #path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
-    path: /scratch/msc25h1/training/ # path to dataset in my scratch
+    path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
+    #path: /scratch/msc25h1/training/ # path to dataset in my scratch
     mode: events # events
     window: 1000 # events
     window_loss: 10000 # events
@@ -48,7 +48,7 @@ loader:
     std_resolution: [128, 128]
     augment: ["Horizontal", "Vertical", "Polarity"]
     augment_prob: [0.5, 0.5, 0.5]
-    gpu: 1
+    gpu: 3
 
 vis:
     verbose: True

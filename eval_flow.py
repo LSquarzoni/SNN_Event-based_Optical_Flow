@@ -155,6 +155,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
     #model_path_dir = "mlruns/0/models/LIFFN_newIN/19/model.pth" # runid: 62d2987219a6417e94cb6ac3850aadb9
     #model_path_dir = "mlruns/0/models/LIFFN_newOUT/38/model.pth" # runid: 14153d8b5da745a09eb1d20bc275dc46
+    #model_path_dir = "mlruns/0/models/LIFFN_fullREC/5/model.pth" # runid: 83a70940b6d04e1d9225e84a88c64c6d
     
     #model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
     #model_path_dir = "mlruns/0/models/LIFFFN_16ch/23/model.pth" # runid: 5263c20879994d469904e950f8835953
@@ -166,7 +167,10 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN/8/model.pth" # runid: 98efd73ac99646c8bd35e387217a7d94
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newOUT/25/model.pth" # runid: bf537ca6bde14f8e91e59590bfc2ca94
-    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN_OUT//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN_OUT//model.pth" # runid: 
+    
+    # POOLED MODELS:
+    #model_path_dir = "mlruns/0/models/LIFFN_128x128/5/model.pth" # runid: 84cfb35b11e749d891d8d17b56fa75e0
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     

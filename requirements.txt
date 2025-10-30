@@ -1,19 +1,24 @@
-torch==2.7.1
-torchvision==0.22.1
-torchinfo==1.8.0
+# conda install pip
+# conda install python=3.11
+# pip install -r requirements.txt
+
+torch==2.7
+torchvision==0.22
+torchinfo==1.8
 snntorch==0.9.4
-PyYAML==6.0.2
-numpy==2.2.6
-pandas==2.3.1
+PyYAML==6.0
+numpy==2.2
+pandas==2.3
 h5py==3.14.0
-hdf5plugin==5.1.0
+hdf5plugin==5.1
 opencv-python==4.12.0.88
-pre-commit==4.2.0
-matplotlib==3.10.5
-progress==1.6.1
-mlflow==3.2.0
-brevitas==0.12.0
-netron==8.5.0
-onnx==1.18.0
-onnxruntime==1.22.1
-onnxoptimizer==0.3.13
+pre-commit==4.2
+matplotlib==3.10
+progress==1.6
+mlflow==3.2
+brevitas
+netron==8.5
+onnx==1.18
+onnxruntime==1.22
+onnxoptimizer
+ipykernel==7.0

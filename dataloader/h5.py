@@ -5,6 +5,7 @@ import numpy as np
 
 import torch
 import torch.utils.data as data
+import torch.nn.functional as F
 import torchvision.transforms as transforms
 
 from .base import BaseDataLoader
@@ -299,7 +300,11 @@ class H5Loader(BaseDataLoader):
                     sample_flow = self.open_files[batch]["flow_dt1"][self.open_files_flowmaps[batch].names[0]][:]
                 else:
                     sample_flow = self.open_files[batch]["flow_dt4"][self.open_files_flowmaps[batch].names[0]][:]
-                original_height, original_width = sample_flow.shape[:2]
+                # Flow shape is [2, H, W] or [H, W, 2], get H and W
+                if sample_flow.shape[0] == 2:
+                    original_height, original_width = sample_flow.shape[1], sample_flow.shape[2]
+                else:
+                    original_height, original_width = sample_flow.shape[:2]
             elif (self.config["data"]["mode"] == "events" and 
                 (self.config["loader"]["resolution"][0] < self.config["loader"]["std_resolution"][0] or
                 self.config["loader"]["resolution"][1] < self.config["loader"]["std_resolution"][1])):
@@ -368,46 +373,78 @@ class H5Loader(BaseDataLoader):
         # prepare output
         output = {}
 
-        # Check if cropping is needed (when target size is smaller than original size), only for evaluation
+        # Check if downsampling is needed (when target size is smaller than original size), only for evaluation
         if (original_height is not None and original_width is not None and 
             (target_height < original_height or target_width < original_width) 
             and self.config["data"]["mode"] != "events" and not self.config["loader"]["output_crop"]):
-            # Initialize center crop transform
-            center_crop = transforms.CenterCrop((target_height, target_width))
             
-            # Apply center cropping to tensor-based encodings
-            output["event_cnt"] = center_crop(event_cnt)
-            output["event_voxel"] = center_crop(event_voxel)
-            output["event_mask"] = center_crop(event_mask)
+            # Calculate pooling kernel size
+            pool_h = original_height // target_height
+            pool_w = original_width // target_width
             
-            # Filter event_list based on crop boundaries
-            crop_y_start = (original_height - target_height) // 2
-            crop_y_end = crop_y_start + target_height
-            crop_x_start = (original_width - target_width) // 2
-            crop_x_end = crop_x_start + target_width
+            # Safety check: ensure valid pooling kernel
+            if pool_h == 0 or pool_w == 0:
+                raise ValueError(f"Invalid pooling kernel size: pool_h={pool_h}, pool_w={pool_w}. "
+                               f"Original size: ({original_height}, {original_width}), "
+                               f"Target size: ({target_height}, {target_width})")
             
-            # Create mask for events within crop region
-            # event_list shape: [4, N] where columns are [ts, y, x, p]
-            if event_list.numel() > 0:
-                event_mask = ((event_list[1, :] >= crop_y_start) & (event_list[1, :] < crop_y_end) & 
-                              (event_list[2, :] >= crop_x_start) & (event_list[2, :] < crop_x_end))
-                
-                # Filter events and adjust coordinates
-                filtered_event_list = event_list[:, event_mask]
-                if filtered_event_list.shape[1] > 0:
-                    filtered_event_list[1, :] -= crop_y_start  # Adjust y coordinates
-                    filtered_event_list[2, :] -= crop_x_start  # Adjust x coordinates
-                
-                output["event_list"] = filtered_event_list
-                output["event_list_pol_mask"] = event_list_pol_mask[:, event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
-            else:
-                output["event_list"] = event_list
-                output["event_list_pol_mask"] = event_list_pol_mask
-            
-            if self.config["data"]["mode"] == "frames":
-                output["frames"] = center_crop(frames)
+            # For gtflow modes, use average pooling instead of center cropping
             if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-                output["gtflow"] = center_crop(flowmap)
+                # Apply average pooling to event encodings (preserves event density, not total count)
+                output["event_cnt"] = F.avg_pool2d(event_cnt.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                output["event_voxel"] = F.avg_pool2d(event_voxel.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                output["event_mask"] = F.avg_pool2d(event_mask.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                
+                # Scale event_list coordinates to match downsampled resolution
+                if event_list.numel() > 0:
+                    scaled_event_list = event_list.clone()
+                    scaled_event_list[1, :] = scaled_event_list[1, :] * (target_height / original_height)  # Scale y
+                    scaled_event_list[2, :] = scaled_event_list[2, :] * (target_width / original_width)    # Scale x
+                    # Clamp coordinates to valid range to avoid out-of-bounds errors
+                    scaled_event_list[1, :] = torch.clamp(scaled_event_list[1, :], 0, target_height - 1)
+                    scaled_event_list[2, :] = torch.clamp(scaled_event_list[2, :], 0, target_width - 1)
+                    output["event_list"] = scaled_event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask
+                else:
+                    output["event_list"] = event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask
+                
+                # Apply average pooling to ground truth flow
+                output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                # Scale the flow values to match the new resolution
+                output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
+                output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
+            
+            # For frames mode, keep center cropping
+            elif self.config["data"]["mode"] == "frames":
+                center_crop = transforms.CenterCrop((target_height, target_width))
+                
+                output["event_cnt"] = center_crop(event_cnt)
+                output["event_voxel"] = center_crop(event_voxel)
+                output["event_mask"] = center_crop(event_mask)
+                
+                # Filter event_list based on crop boundaries
+                crop_y_start = (original_height - target_height) // 2
+                crop_y_end = crop_y_start + target_height
+                crop_x_start = (original_width - target_width) // 2
+                crop_x_end = crop_x_start + target_width
+                
+                if event_list.numel() > 0:
+                    event_mask = ((event_list[1, :] >= crop_y_start) & (event_list[1, :] < crop_y_end) & 
+                                  (event_list[2, :] >= crop_x_start) & (event_list[2, :] < crop_x_end))
+                    
+                    filtered_event_list = event_list[:, event_mask]
+                    if filtered_event_list.shape[1] > 0:
+                        filtered_event_list[1, :] -= crop_y_start
+                        filtered_event_list[2, :] -= crop_x_start
+                    
+                    output["event_list"] = filtered_event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask[:, event_mask] if event_list_pol_mask.numel() > 0 else event_list_pol_mask
+                else:
+                    output["event_list"] = event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask
+                
+                output["frames"] = center_crop(frames)
             
             output["dt_gt"] = torch.from_numpy(dt_gt)
             output["dt_input"] = torch.from_numpy(dt_input)
@@ -415,10 +452,9 @@ class H5Loader(BaseDataLoader):
         elif (original_height is not None and original_width is not None and 
             (target_height < original_height or target_width < original_width) 
             and self.config["data"]["mode"] != "events" and self.config["loader"]["output_crop"]):
-            # Initialize center crop transform
-            center_crop = transforms.CenterCrop((target_height, target_width))
             
-            # Output only cropped ground truth, since the cropping of the flow will be carried out after inference
+            # Output only downsampled ground truth for gtflow modes,
+            # since the cropping/pooling of the flow will be carried out after inference
             output["event_cnt"] = event_cnt
             output["event_voxel"] = event_voxel
             output["event_mask"] = event_mask
@@ -426,24 +462,70 @@ class H5Loader(BaseDataLoader):
             output["event_list_pol_mask"] = event_list_pol_mask
             
             if self.config["data"]["mode"] == "frames":
+                center_crop = transforms.CenterCrop((target_height, target_width))
                 output["frames"] = center_crop(frames)
+            
             if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-                output["gtflow"] = center_crop(flowmap)
+                # Apply average pooling to ground truth flow
+                output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                # Scale the flow values to match the new resolution
+                output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
+                output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
             
             output["dt_gt"] = torch.from_numpy(dt_gt)
             output["dt_input"] = torch.from_numpy(dt_input)
         else:
-            # Output unaltered tensors when no cropping is needed
-            output["event_cnt"] = event_cnt
-            output["event_voxel"] = event_voxel
-            output["event_mask"] = event_mask
-            output["event_list"] = event_list
-            output["event_list_pol_mask"] = event_list_pol_mask
-            
-            if self.config["data"]["mode"] == "frames":
-                output["frames"] = frames
-            if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-                output["gtflow"] = flowmap
+            # Check if pooling is needed for events mode (for training at lower resolutions)
+            if (self.config["data"]["mode"] == "events" and 
+                original_height is not None and original_width is not None and
+                (target_height < original_height or target_width < original_width)):
+                
+                # Calculate pooling kernel size
+                pool_h = original_height // target_height
+                pool_w = original_width // target_width
+                
+                # Safety check: ensure valid pooling kernel
+                if pool_h == 0 or pool_w == 0:
+                    raise ValueError(f"Invalid pooling kernel size: pool_h={pool_h}, pool_w={pool_w}. "
+                                   f"Original size: ({original_height}, {original_width}), "
+                                   f"Target size: ({target_height}, {target_width})")
+                
+                # Apply average pooling to event encodings
+                output["event_cnt"] = F.avg_pool2d(event_cnt.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                output["event_voxel"] = F.avg_pool2d(event_voxel.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                output["event_mask"] = F.avg_pool2d(event_mask.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                
+                # Scale event_list coordinates to match downsampled resolution
+                if event_list.numel() > 0:
+                    scaled_event_list = event_list.clone()
+                    scaled_event_list[1, :] = scaled_event_list[1, :] * (target_height / original_height)  # Scale y
+                    scaled_event_list[2, :] = scaled_event_list[2, :] * (target_width / original_width)    # Scale x
+                    # Clamp coordinates to valid range to avoid out-of-bounds errors
+                    scaled_event_list[1, :] = torch.clamp(scaled_event_list[1, :], 0, target_height - 1)
+                    scaled_event_list[2, :] = torch.clamp(scaled_event_list[2, :], 0, target_width - 1)
+                    output["event_list"] = scaled_event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask
+                else:
+                    output["event_list"] = event_list
+                    output["event_list_pol_mask"] = event_list_pol_mask
+                
+                # Apply average pooling to ground truth flow (simpler than interpolation for training)
+                output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                # Scale the flow values to match the new resolution
+                output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
+                output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
+            else:
+                # Output unaltered tensors when no pooling is needed
+                output["event_cnt"] = event_cnt
+                output["event_voxel"] = event_voxel
+                output["event_mask"] = event_mask
+                output["event_list"] = event_list
+                output["event_list_pol_mask"] = event_list_pol_mask
+                
+                if self.config["data"]["mode"] == "frames":
+                    output["frames"] = frames
+                if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
+                    output["gtflow"] = flowmap
             
             output["dt_gt"] = torch.from_numpy(dt_gt)
             output["dt_input"] = torch.from_numpy(dt_input)

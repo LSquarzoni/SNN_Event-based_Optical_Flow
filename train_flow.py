@@ -167,10 +167,13 @@ def train(args, config_parser):
 
     # loss function
     loss_function = EventWarping(config, device)
+    
+    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
 
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
     model = load_model(args.prev_runid, model, device)
+    #model = load_model(args.runid, model, device, model_path_dir)
     
     model.train()
 
@@ -242,7 +245,7 @@ def train(args, config_parser):
                                 print(f"Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder with incremented counter
-                        base_model_path = "mlruns/0/models/LIFFN_fullREC/"
+                        base_model_path = "mlruns/0/models/LIFFN_/"
                         model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
                         
                         try:
@@ -381,6 +384,7 @@ def train(args, config_parser):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    #parser.add_argument("runid", default="", help="mlflow run")
     parser.add_argument(
         "--config",
         default="configs/train_SNN.yml",
