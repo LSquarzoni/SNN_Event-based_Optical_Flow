@@ -639,9 +639,9 @@ class LIFFireNet_short(FireNet_short):
     """
     Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
     """
-    head_neuron = custom_ConvLIF
-    ff_neuron = custom_ConvLIF
-    rec_neuron = custom_ConvLIFRecurrent
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -651,9 +651,9 @@ class LIFFireFlowNet(FireNet):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = custom_ConvLIF
-    ff_neuron = custom_ConvLIF
-    rec_neuron = custom_ConvLIF
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
     
@@ -663,9 +663,9 @@ class LIFFireFlowNet_short(FireNet_short):
     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     """
 
-    head_neuron = custom_ConvLIF
-    ff_neuron = custom_ConvLIF
-    rec_neuron = custom_ConvLIF
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF
     residual = False
     w_scale_pred = 0.01
     

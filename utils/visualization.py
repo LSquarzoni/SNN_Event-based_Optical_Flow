@@ -27,6 +27,8 @@ class Visualization:
         self.vis_type = vis_type
         self.store_type = kwargs["vis"].get("store_type", "image")  # 'image' or 'video'
         self.video_writers = {}
+        # flow scaling factor to convert from model's internal representation to pixels
+        self.flow_scaling = float(kwargs.get("metrics", {}).get("flow_scaling", 1.0))
 
         if eval_id >= 0 and path_results is not None:
             self.store_dir = path_results + "results/"
@@ -78,6 +80,8 @@ class Visualization:
                 mflow = masked_window_flow.detach()
                 m_h, m_w = mflow.shape[2], mflow.shape[3]
                 masked_window_flow_npy = mflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((m_h, m_w, 2))
+                # Scale flow from model's internal representation to pixels
+                masked_window_flow_npy = masked_window_flow_npy * self.flow_scaling
                 # Show gradients visualization
                 masked_grad_img = self.flow_to_image(
                     masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
@@ -121,6 +125,8 @@ class Visualization:
             flow = flow.detach()
             flow_h, flow_w = flow.shape[2], flow.shape[3]
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
+            # Scale flow from model's internal representation to pixels
+            flow_npy = flow_npy * self.flow_scaling
             if self.vis_type == "vectors":
                 # If ground-truth exists, overlay its average vector as a white arrow behind the predicted one
                 gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
@@ -148,6 +154,8 @@ class Visualization:
             masked_window_flow = masked_window_flow.detach()
             masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
+            # Scale flow from model's internal representation to pixels
+            masked_window_flow_npy = masked_window_flow_npy * self.flow_scaling
             if self.vis_type == "vectors":
                 # Overlay white average GT arrow if ground-truth is available
                 gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
@@ -266,6 +274,8 @@ class Visualization:
                 flow = flow.detach()
                 flow_h, flow_w = flow.shape[2], flow.shape[3]
                 flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
+                # Scale flow from model's internal representation to pixels
+                flow_npy = flow_npy * self.flow_scaling
                 
                 gtflow = gtflow.detach()
                 gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
@@ -349,6 +359,8 @@ class Visualization:
             flow = flow.detach()
             flow_h, flow_w = flow.shape[2], flow.shape[3]
             flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
+            # Scale flow from model's internal representation to pixels
+            flow_npy = flow_npy * self.flow_scaling
             flow_grad_img = self.flow_to_image(flow_npy[:, :, 0], flow_npy[:, :, 1], uniform_v=self.v_uniform)
             flow_grad_img = self._apply_v_scale(flow_grad_img)
             flow_grad_img = cv2.cvtColor(flow_grad_img, cv2.COLOR_RGB2BGR)
@@ -371,6 +383,8 @@ class Visualization:
             masked_window_flow = masked_window_flow.detach()
             masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
             masked_window_flow_npy = masked_window_flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((masked_h, masked_w, 2))
+            # Scale flow from model's internal representation to pixels
+            masked_window_flow_npy = masked_window_flow_npy * self.flow_scaling
             # Gradient-based visualization
             masked_grad_img = self.flow_to_image(
                 masked_window_flow_npy[:, :, 0], masked_window_flow_npy[:, :, 1]
