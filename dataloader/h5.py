@@ -412,8 +412,8 @@ class H5Loader(BaseDataLoader):
                 # Apply average pooling to ground truth flow
                 output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 # Scale the flow values to match the new resolution
-                output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
-                output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
+                # output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
+                # output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
             
             # For frames mode, keep center cropping
             elif self.config["data"]["mode"] == "frames":
@@ -469,8 +469,8 @@ class H5Loader(BaseDataLoader):
                 # Apply average pooling to ground truth flow
                 output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 # Scale the flow values to match the new resolution
-                output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
-                output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
+                # output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
+                # output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
             
             output["dt_gt"] = torch.from_numpy(dt_gt)
             output["dt_input"] = torch.from_numpy(dt_input)
@@ -512,8 +512,8 @@ class H5Loader(BaseDataLoader):
                 # Apply average pooling to ground truth flow (simpler than interpolation for training)
                 output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 # Scale the flow values to match the new resolution
-                output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
-                output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
+                # output["gtflow"][0, :, :] *= (target_width / original_width)   # Scale x-component
+                # output["gtflow"][1, :, :] *= (target_height / original_height)  # Scale y-component
             else:
                 # Output unaltered tensors when no pooling is needed
                 output["event_cnt"] = event_cnt
