@@ -42,8 +42,6 @@ class BaseDataLoader(torch.utils.data.Dataset):
             self.hot_events = [
                 torch.zeros(self.resolution) for i in range(self.config["loader"]["batch_size"])
             ]
-        # per-batch previous cnt (for temporal_cnt encoding)
-        self.prev_cnt = [None for i in range(self.config["loader"]["batch_size"])]
 
     @abstractmethod
     def __getitem__(self, index):

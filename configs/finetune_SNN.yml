@@ -17,7 +17,6 @@ model:
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
-    temporal_cnt: False # if True, use temporal cnt input encoding
     quantization:
         enabled: False
         type: int8 # int8 or int16

@@ -332,9 +332,6 @@ class H5Loader(BaseDataLoader):
                 event_cnt = event_cnt * hot_mask_cnt
                 event_mask *= hot_mask.view((1, hot_mask.shape[0], hot_mask.shape[1]))
 
-            # optional temporal cnt encoding
-            event_cnt = self.apply_temporal_cnt(event_cnt, batch)
-
             # load frames when required
             if self.config["data"]["mode"] == "frames":
                 curr_idx = int(np.floor(self.batch_row[batch]))
