@@ -127,6 +127,15 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             event_voxel = inputs["event_voxel"].to(device)
             event_cnt = inputs["event_cnt"].to(device)
 
+
+            # Require at least 10% non-zero values in event_cnt for export
+            nonzero_cnt = torch.count_nonzero(event_cnt)
+            total_cnt = event_cnt.numel()
+            nonzero_ratio = nonzero_cnt.float() / total_cnt
+            if nonzero_ratio < 0.1:
+                print(f"Skipping sparse input batch for ONNX export (nonzero ratio: {nonzero_ratio:.3f})...")
+                continue
+
             # Save example input for Deeploy
             np.savez('exported_models/inputs.npz',
                      event_cnt=event_cnt.cpu().numpy().astype(np.float32))
@@ -177,7 +186,8 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             np.savez('exported_models/outputs.npz', flow=flow)
 
             # Export paths
-            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}.onnx"
+            #onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}.onnx"
+            onnx_file_path = f"exported_models/network.onnx"
             onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler.onnx"
 
             print(f"Exporting model to: {onnx_file_path}")
@@ -352,10 +362,10 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             print(f"ONNX model exported successfully and verified!")
             onnx.save(onnx_model, onnx_file_path)
 
-            simpler_model, check = simplify(onnx_model)
+            """ simpler_model, check = simplify(onnx_model)
             if check:
                 onnx.save(simpler_model, onnx_simpler_file_path)
-                print("Simplified ONNX model saved successfully!")
+                print("Simplified ONNX model saved successfully!") """
 
             # Print model info
             print(f"Model size: {len(onnx_model.SerializeToString()) / 1024 / 1024:.2f} MB")
