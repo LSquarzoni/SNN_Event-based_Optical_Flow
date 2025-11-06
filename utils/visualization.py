@@ -313,6 +313,7 @@ class Visualization:
                 self.video_writers.clear()
 
             os.makedirs(path_to)
+            os.makedirs(path_to + "events/")
             os.makedirs(path_to + "gtflow/")
             os.makedirs(path_to + "flow/")
             os.makedirs(path_to + "masked_flow_grad/")
@@ -330,8 +331,24 @@ class Visualization:
         events = events.detach()
         events_npy = events.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, -1))
         event_image = self.events_to_image(events_npy)
-        filename = path_to + "events/%09d.png" % self.img_idx
-        cv2.imwrite(filename, event_image * 255)
+        
+        # Store individual event images or video
+        events_img_bgr = (event_image * 255).astype(np.uint8)
+        if events_img_bgr.ndim == 2:
+            events_img_bgr = cv2.cvtColor(events_img_bgr, cv2.COLOR_GRAY2BGR)
+        elif events_img_bgr.shape[2] == 3:
+            events_img_bgr = cv2.cvtColor(events_img_bgr, cv2.COLOR_RGB2BGR)
+        
+        if self.store_type == "image":
+            filename = path_to + "events/%09d.png" % self.img_idx
+            cv2.imwrite(filename, events_img_bgr)
+        elif self.store_type == "video":
+            if "events" not in self.video_writers:
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                fps = 30
+                shape = (width, height)
+                self.video_writers["events"] = cv2.VideoWriter(path_to + "events/events.mp4", fourcc, fps, shape)
+            self.video_writers["events"].write(events_img_bgr)
 
         # input events
         if events_window is not None:
@@ -342,6 +359,13 @@ class Visualization:
             cv2.imwrite(filename, events_window_npy * 255)
 
         # Prepare holders for stitched output (four panels)
+        # Convert event_image to BGR uint8 for stitching
+        events_frame = (event_image * 255).astype(np.uint8)
+        if events_frame.ndim == 2:
+            events_frame = cv2.cvtColor(events_frame, cv2.COLOR_GRAY2BGR)
+        elif events_frame.shape[2] == 3:
+            events_frame = cv2.cvtColor(events_frame, cv2.COLOR_RGB2BGR)
+        
         flow_frame = None
         masked_grad_frame = None
         masked_vec_frame = None
@@ -452,7 +476,10 @@ class Visualization:
             gtflow_frame = gtflow_img
 
         # Create stitched output (four panels side-by-side). If any panel is missing, replace it with a black placeholder.
-        frames_to_stitch = [gtflow_frame, flow_frame, masked_grad_frame, masked_vec_frame]
+        # Order: input events → ground truth → masked flow (gradient) → masked flow (vectors with dual arrows)
+        frames_to_stitch = [events_frame, gtflow_frame, masked_grad_frame, masked_vec_frame]
+        frame_labels = ["Input events", "Ground truth", "Masked flow", "gt (white) vs. flow (color)"]
+        
         if any(f is not None for f in frames_to_stitch):
             # compute target heights/widths
             present = [f for f in frames_to_stitch if f is not None]
@@ -462,19 +489,39 @@ class Visualization:
             default_w = max(widths) if widths else 1
 
             padded = []
-            for f in frames_to_stitch:
+            for idx, f in enumerate(frames_to_stitch):
                 if f is None:
                     pad = np.zeros((max_h, default_w, 3), dtype=np.uint8)
-                    padded.append(pad)
                 else:
                     h, w = f.shape[0], f.shape[1]
                     if h < max_h:
                         pad = np.zeros((max_h, w, 3), dtype=np.uint8)
                         y = (max_h - h) // 2
                         pad[y : y + h, :w] = f
-                        padded.append(pad)
                     else:
-                        padded.append(f)
+                        pad = f.copy()
+                
+                # Add text label at the top of each panel
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 0.5
+                thickness = 1
+                text_color = (255, 255, 255)  # white text
+                text = frame_labels[idx]
+                
+                # Get text size for background rectangle
+                text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+                text_x = 5
+                text_y = 20
+                
+                # Draw black background rectangle for better readability
+                cv2.rectangle(pad, (text_x - 2, text_y - text_size[1] - 2),
+                            (text_x + text_size[0] + 2, text_y + 2),
+                            (0, 0, 0), -1)
+                
+                # Draw text
+                cv2.putText(pad, text, (text_x, text_y), font, font_scale, text_color, thickness)
+                
+                padded.append(pad)
 
             stitched_img = cv2.hconcat(padded)
 
@@ -919,12 +966,14 @@ class Visualization:
             mask_not_pos = pos == 0
             mask_not_neg = neg == 0
 
+            # Positive events in green (channel 1 in RGB)
             event_image[:, :, 0][mask_pos] = 0
             event_image[:, :, 1][mask_pos] = pos[mask_pos]
             event_image[:, :, 2][mask_pos * mask_not_neg] = 0
-            event_image[:, :, 2][mask_neg] = neg[mask_neg]
-            event_image[:, :, 0][mask_neg] = 0
+            # Negative events in red (channel 0 in RGB)
+            event_image[:, :, 0][mask_neg] = neg[mask_neg]
             event_image[:, :, 1][mask_neg * mask_not_pos] = 0
+            event_image[:, :, 2][mask_neg] = 0
 
         return event_image
 
