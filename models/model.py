@@ -157,9 +157,7 @@ class FireNet(BaseModel):
         x6, self._states[5] = self.R2a(x5, self._states[5])
         x7, self._states[6] = self.R2b(x6, self._states[6], residual=x5 if self.residual else 0)
 
-        # Predict dense flow then pool to a single (x, y) pair per sample
         flow = self.pred(x7)  # [B, 2, H, W]
-        #flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
 
         # log activity
         if log:
@@ -310,9 +308,7 @@ class FireNet_short(BaseModel):
         x5, self._states[4] = self.R2a(x4, self._states[4])
         # Skip R2b
 
-        # Predict dense flow then pool to a single (x, y) pair per sample
         flow = self.pred(x5)  # [B, 2, H, W]
-        #flow = torch.nn.functional.adaptive_avg_pool2d(flow, (1, 1))  # [B, 2, 1, 1]
 
         # log activity
         if log:
@@ -628,9 +624,9 @@ class LIFFireNet(FireNet):
     """
     Spiking FireNet architecture of LIF neurons for dense optical flow estimation from events.
     """
-    head_neuron = SNNtorch_ConvLIF
-    ff_neuron = SNNtorch_ConvLIF
-    rec_neuron = SNNtorch_ConvLIFRecurrent
+    head_neuron = custom_ConvLIF
+    ff_neuron = custom_ConvLIF
+    rec_neuron = custom_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -639,9 +635,9 @@ class LIFFireNet_short(FireNet_short):
     """
     Shortened spiking FireNet architecture of LIF neurons with R1b and R2b layers removed.
     """
-    head_neuron = SNNtorch_ConvLIF
-    ff_neuron = SNNtorch_ConvLIF
-    rec_neuron = SNNtorch_ConvLIFRecurrent
+    head_neuron = custom_ConvLIF
+    ff_neuron = custom_ConvLIF
+    rec_neuron = custom_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -771,18 +767,22 @@ class ConvLIF(torch.nn.Module):
     Input: N x input_channels x H x W
     Output: N x hidden_channels x H x W (spikes)
     
-    Wraps SNNtorch_ConvLIF to provide a simple model interface for export.
+    Wraps custom_ConvLIF to provide a simple model interface for export.
     """
     def __init__(self, input_channels=2, hidden_channels=4, kernel_size=3, 
-                 leak=(0.0, 1.0), thresh=(0.0, 0.8), use_custom_op=False):
+                 leak=(0.0, 1.0), thresh=(0.0, 0.8), use_custom_op=True):
         super().__init__()
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.use_custom_op = use_custom_op
+
+        # Create quantization config (disabled by default)
+        quantization_config = {"enabled": False}
         
-        # Create the ConvLIF layer
-        from .SNNtorch_spiking_submodules import SNNtorch_ConvLIF
-        self.conv_lif = SNNtorch_ConvLIF(
+        # Create two ConvLIF layers (custom) stacked sequentially.
+        # The first layer receives the external input, the second receives the spikes
+        # from the first layer. We set the second layer's input_size to hidden_channels.
+        self.conv_lif1 = custom_ConvLIF(
             input_size=input_channels,
             hidden_size=hidden_channels,
             kernel_size=kernel_size,
@@ -794,33 +794,85 @@ class ConvLIF(torch.nn.Module):
             hard_reset=True,
             detach=True,
             norm=None,
-            quantization_config=None
+            quantization_config=quantization_config,
         )
-        
-        # State for the layer
-        self.state = None
+
+        self.conv_lif2 = custom_ConvLIF(
+            input_size=hidden_channels,
+            hidden_size=hidden_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            leak=leak,
+            thresh=thresh,
+            learn_leak=True,
+            learn_thresh=True,
+            hard_reset=True,
+            detach=True,
+            norm=None,
+            quantization_config=quantization_config,
+        ) 
+
+        self.conv_lif3 = custom_ConvLIF(
+            input_size=hidden_channels,
+            hidden_size=hidden_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            leak=leak,
+            thresh=thresh,
+            learn_leak=True,
+            learn_thresh=True,
+            hard_reset=True,
+            detach=True,
+            norm=None,
+            quantization_config=quantization_config,
+        ) 
+
+        self.conv = ConvLayer(
+            hidden_channels, out_channels=2, kernel_size=1, activation="tanh", quantization_config=quantization_config
+        )
+
+        # State for the stacked layers (concatenated along channel dim)
+        # Caller/export will pass mem with shape [N, 2*hidden_channels, H, W]
+        self.mem = [None, None, None]
     
     def reset_states(self):
         """Reset the internal state to None."""
-        self.state = None
-    
-    def forward(self, input, mem=None):
-        """
-        Forward pass through the ConvLIF layer.
-        
-        Args:
-            input: Input tensor [N, input_channels, H, W]
-            mem: Optional membrane state [2, N, hidden_channels, H, W]
-                 If None, will be initialized by the layer
-        
-        Returns:
-            spk: Output spikes [N, hidden_channels, H, W]
-            mem_out: Updated membrane state [2, N, hidden_channels, H, W]
-        """
-        # Forward through the ConvLIF layer
-        spk, mem_out = self.conv_lif(input, mem, residual=0)
-        
-        # Update internal state
-        self.state = mem_out
+        self.mem = [None, None, None]
 
-        return spk, mem_out
+    def forward(self, input, mem=None):
+        # Layer 1: conv1 -> LIF1
+        ff1 = self.conv_lif1.ff(input)
+        
+        # Use init_mem from the layer itself for initialization
+        mem1 = self.conv_lif1.init_mem
+        
+        # Apply LIF1
+        out1 = torch.ops.SNN_implementation.LIF(ff1, mem1, self.conv_lif1.beta, self.conv_lif1.threshold)
+        spk1 = out1[0]  # spikes from layer 1
+        mem_out1 = out1[1]  # membrane state from layer 1
+
+        # Layer 2: spk1 -> conv2 -> LIF2
+        ff2 = self.conv_lif2.ff(spk1)
+        
+        # Use init_mem from the second layer
+        mem2 = self.conv_lif2.init_mem
+        
+        # Apply LIF2
+        out2 = torch.ops.SNN_implementation.LIF(ff2, mem2, self.conv_lif2.beta, self.conv_lif2.threshold)
+        spk2 = out2[0]  # final output spikes
+        mem_out2 = out2[1]  # membrane state from layer 2
+
+        """ # Layer 3: spk2 -> conv3 -> LIF3
+        ff3 = self.conv_lif3.ff(spk2)
+
+        # Use init_mem from the third layer
+        mem3 = self.conv_lif3.init_mem
+
+        # Apply LIF3
+        out3 = torch.ops.SNN_implementation.LIF(ff3, mem3, self.conv_lif3.beta, self.conv_lif3.threshold)
+        spk3 = out3[0]  # final output spikes
+        mem_out3 = out3[1]  # membrane state from layer 3 """
+
+        pred = self.conv(spk2)
+
+        return pred
