@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
-from dataloader.h5 import H5Loader
+from dataloader.h5 import H5Loader, H5Loader_original
 from loss.flow import AEE, NEE, AE
 from models.model import (
     FireNet,
@@ -186,7 +186,7 @@ def test(args, config_parser):
             criteria.append(eval(metric)(config, device, flow_scaling=config["metrics"]["flow_scaling"]))
 
     # data loader
-    data = H5Loader(config, config["model"]["num_bins"])
+    data = H5Loader_original(config, config["model"]["num_bins"])
     dataloader = torch.utils.data.DataLoader(
         data,
         drop_last=True,
@@ -211,10 +211,10 @@ def test(args, config_parser):
             **kwargs,
         )
 
-    # Initialize center crop transform if needed
+    """ # Initialize center crop transform if needed
     center_crop = None
     if config["loader"]["output_crop"]:
-        center_crop = transforms.CenterCrop((config["loader"]["resolution"][0], config["loader"]["resolution"][1]))
+        center_crop = transforms.CenterCrop((config["loader"]["resolution"][0], config["loader"]["resolution"][1])) """
 
     # inference loop
     idx_AEE = 0
