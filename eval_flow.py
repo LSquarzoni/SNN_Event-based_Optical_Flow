@@ -201,7 +201,7 @@ def test(args, config_parser):
         model = calibrate_model(dataloader, model, device, args)
         
         # Reset the dataloader for actual inference
-        data = H5Loader(config, config["model"]["num_bins"])
+        data = H5Loader_original(config, config["model"]["num_bins"])
         dataloader = torch.utils.data.DataLoader(
             data,
             drop_last=True,
@@ -243,7 +243,7 @@ def test(args, config_parser):
                     else:
                         resolution = config["loader"]["resolution"]
                     
-                    # Ensure model flow outputs are at the requested evaluation resolution
+                    """ # Ensure model flow outputs are at the requested evaluation resolution
                     # (models may output a single global flow [B,2,1,1] or small maps)
                     target_h, target_w = int(resolution[0]), int(resolution[1])
                     resized_flows = []
@@ -258,7 +258,7 @@ def test(args, config_parser):
                                 resized_flows.append(f.repeat(1, 1, target_h, target_w))
                         else:
                             resized_flows.append(f)
-                    x["flow"] = resized_flows
+                    x["flow"] = resized_flows """
                     
                     # mask flow for visualization
                     flow_vis_unmasked = x["flow"][-1].clone()
