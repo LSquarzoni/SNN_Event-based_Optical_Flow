@@ -387,7 +387,7 @@ class H5Loader(BaseDataLoader):
             
             # For gtflow modes, use average pooling instead of center cropping
             if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-                # Apply average pooling to event encodings (preserves event density, not total count)
+                # Apply average pooling
                 output["event_cnt"] = F.avg_pool2d(event_cnt.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 output["event_voxel"] = F.avg_pool2d(event_voxel.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 output["event_mask"] = F.avg_pool2d(event_mask.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
@@ -487,7 +487,7 @@ class H5Loader(BaseDataLoader):
                                    f"Original size: ({original_height}, {original_width}), "
                                    f"Target size: ({target_height}, {target_width})")
                 
-                # Apply average pooling to event encodings
+                # Apply average pooling
                 output["event_cnt"] = F.avg_pool2d(event_cnt.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 output["event_voxel"] = F.avg_pool2d(event_voxel.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
                 output["event_mask"] = F.avg_pool2d(event_mask.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
