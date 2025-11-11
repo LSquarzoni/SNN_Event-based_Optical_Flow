@@ -145,10 +145,10 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
     
     # FINAL MODELS: simplification of the LIF code
-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
     #model_path_dir = "mlruns/0/models/LIFFN_best/19/model.pth" # runid: 93506e28ff064558a20d9c476364badd
     #model_path_dir = "mlruns/0/models/LIFFN_64x64_trained/15/model.pth" # runid: 599f00b5567e40929eeb4cd07b8a9430
-    #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
+    model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
     #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
     #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
     #model_path_dir = "mlruns/0/models/LIFFN_short/39/model.pth" # runid: bb4ece23356043fca1204176cb270c7d
@@ -175,8 +175,8 @@ def test(args, config_parser):
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
-    #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
-    model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
+    model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+    #model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
     model.eval()
 
     # validation metric
@@ -201,7 +201,7 @@ def test(args, config_parser):
         model = calibrate_model(dataloader, model, device, args)
         
         # Reset the dataloader for actual inference
-        data = H5Loader_original(config, config["model"]["num_bins"])
+        data = H5Loader(config, config["model"]["num_bins"])
         dataloader = torch.utils.data.DataLoader(
             data,
             drop_last=True,
@@ -210,11 +210,6 @@ def test(args, config_parser):
             worker_init_fn=config_parser.worker_init_fn,
             **kwargs,
         )
-
-    """ # Initialize center crop transform if needed
-    center_crop = None
-    if config["loader"]["output_crop"]:
-        center_crop = transforms.CenterCrop((config["loader"]["resolution"][0], config["loader"]["resolution"][1])) """
 
     # inference loop
     idx_AEE = 0
@@ -238,42 +233,16 @@ def test(args, config_parser):
                         inputs["event_voxel"].to(device), inputs["event_cnt"].to(device), log=config["vis"]["activity"]
                     )
                     
-                    if config["loader"]["output_crop"]:
-                        resolution = config["loader"]["std_resolution"]
-                    else:
-                        resolution = config["loader"]["resolution"]
-                    
-                    """ # Ensure model flow outputs are at the requested evaluation resolution
-                    # (models may output a single global flow [B,2,1,1] or small maps)
-                    target_h, target_w = int(resolution[0]), int(resolution[1])
-                    resized_flows = []
-                    for f in x["flow"]:
-                        h_in, w_in = f.shape[2], f.shape[3]
-                        if h_in == 1 and w_in == 1:
-                            # exact tiling for a single global flow value
-                            try:
-                                resized_flows.append(f.expand(-1, -1, target_h, target_w))
-                            except Exception:
-                                # expand may return a non-contiguous view; fall back to repeat
-                                resized_flows.append(f.repeat(1, 1, target_h, target_w))
-                        else:
-                            resized_flows.append(f)
-                    x["flow"] = resized_flows """
-                    
                     # mask flow for visualization
                     flow_vis_unmasked = x["flow"][-1].clone()
                     flow_vis = x["flow"][-1].clone()
                     if model.mask:
                         flow_vis *= inputs["event_mask"].to(device)
-                    if config["loader"]["output_crop"]:
-                        resolution = config["loader"]["std_resolution"]
-                    else:
-                        resolution = config["loader"]["resolution"]
                     # image of warped events
                     iwe = compute_pol_iwe(
                         x["flow"][-1],
                         inputs["event_list"].to(device),
-                        resolution,
+                        config["loader"]["resolution"],
                         inputs["event_list_pol_mask"][:, :, 0:1].to(device),
                         inputs["event_list_pol_mask"][:, :, 1:2].to(device),
                         flow_scaling=config["metrics"]["flow_scaling"],
@@ -283,79 +252,9 @@ def test(args, config_parser):
                     events_window_vis = None
                     masked_window_flow_vis = None
                     if "metrics" in config.keys():
-                        if config["loader"]["output_crop"]:
-                            x["flow"] = [center_crop(flow).contiguous() for flow in x["flow"]]
-                            inputs_filtered = {}
-                            for key, value in inputs.items():
-                                inputs_filtered[key] = value
-                            if "gtflow" in inputs and inputs["gtflow"].numel() > 0:
-                                inputs_filtered["gtflow"] = center_crop(inputs["gtflow"]).contiguous()
-                            for tensor_key in ["event_voxel", "event_cnt", "event_mask"]:
-                                if tensor_key in inputs and inputs[tensor_key].numel() > 0:
-                                    inputs_filtered[tensor_key] = center_crop(inputs[tensor_key]).contiguous()
-                            if inputs["event_list"].numel() > 0:
-                                crop_y_start = (config["loader"]["std_resolution"][0] - config["loader"]["resolution"][0]) // 2
-                                crop_y_end = crop_y_start + config["loader"]["resolution"][0]
-                                crop_x_start = (config["loader"]["std_resolution"][1] - config["loader"]["resolution"][1]) // 2
-                                crop_x_end = crop_x_start + config["loader"]["resolution"][1]
-                                event_list = inputs["event_list"]
-                                batch_size = event_list.shape[0]
-                                filtered_events = []
-                                for b in range(batch_size):
-                                    batch_events = event_list[b, :, :]  # [N_events, 4]
-                                    if batch_events.shape[0] > 0:
-                                        event_mask = ((batch_events[:, 1] >= crop_y_start) & (batch_events[:, 1] < crop_y_end) & 
-                                                    (batch_events[:, 2] >= crop_x_start) & (batch_events[:, 2] < crop_x_end))
-                                        filtered_batch = batch_events[event_mask].clone()
-                                        if filtered_batch.shape[0] > 0:
-                                            filtered_batch[:, 1] -= crop_y_start  # Adjust y coordinates
-                                            filtered_batch[:, 2] -= crop_x_start  # Adjust x coordinates
-                                        filtered_events.append(filtered_batch)
-                                    else:
-                                        filtered_events.append(torch.zeros(0, 4, device=batch_events.device, dtype=batch_events.dtype))
-                                if len(filtered_events) > 0:
-                                    max_events = max(fe.shape[0] for fe in filtered_events) if any(fe.shape[0] > 0 for fe in filtered_events) else 0
-                                    if max_events > 0:
-                                        padded_events = []
-                                        for fe in filtered_events:
-                                            if fe.shape[0] < max_events:
-                                                padding = torch.zeros(max_events - fe.shape[0], 4, device=fe.device, dtype=fe.dtype)
-                                                fe = torch.cat([fe, padding], dim=0)
-                                            padded_events.append(fe.unsqueeze(0))  # Add batch dimension back
-                                        inputs_filtered["event_list"] = torch.cat(padded_events, dim=0)
-                                    else:
-                                        inputs_filtered["event_list"] = torch.zeros(batch_size, 0, 4, device=event_list.device, dtype=event_list.dtype)
-                                else:
-                                    inputs_filtered["event_list"] = torch.zeros_like(event_list)
-                                if inputs["event_list_pol_mask"].numel() > 0:
-                                    pol_mask = inputs["event_list_pol_mask"]
-                                    filtered_pol_masks = []
-                                    for b in range(batch_size):
-                                        batch_events = event_list[b, :, :]  # [N_events, 4]
-                                        batch_pol_mask = pol_mask[b, :, :] if pol_mask.shape[0] > 1 else pol_mask[0, :, :]  # [N_events, 2]
-                                        if batch_events.shape[0] > 0:
-                                            event_mask = ((batch_events[:, 1] >= crop_y_start) & (batch_events[:, 1] < crop_y_end) & 
-                                                        (batch_events[:, 2] >= crop_x_start) & (batch_events[:, 2] < crop_x_end))
-                                            filtered_pol_batch = batch_pol_mask[event_mask].clone()
-                                            filtered_pol_masks.append(filtered_pol_batch)
-                                        else:
-                                            filtered_pol_masks.append(torch.zeros(0, batch_pol_mask.shape[1], device=batch_pol_mask.device, dtype=batch_pol_mask.dtype))
-                                    if max_events > 0:
-                                        padded_pol_masks = []
-                                        for fpm in filtered_pol_masks:
-                                            if fpm.shape[0] < max_events:
-                                                padding = torch.zeros(max_events - fpm.shape[0], fpm.shape[1], device=fpm.device, dtype=fpm.dtype)
-                                                fpm = torch.cat([fpm, padding], dim=0)
-                                            padded_pol_masks.append(fpm.unsqueeze(0))
-                                        inputs_filtered["event_list_pol_mask"] = torch.cat(padded_pol_masks, dim=0)
-                                    else:
-                                        inputs_filtered["event_list_pol_mask"] = torch.zeros(batch_size, 0, pol_mask.shape[2], device=pol_mask.device, dtype=pol_mask.dtype)
                         # event flow association
                         for metric in criteria:
-                            if config["loader"]["output_crop"]:
-                                metric.event_flow_association(x["flow"], inputs_filtered)
-                            else:
-                                metric.event_flow_association(x["flow"], inputs)
+                            metric.event_flow_association(x["flow"], inputs)
                         # validation
                         for i, metric in enumerate(config["metrics"]["name"]):
                             if criteria[i].num_events >= config["data"]["window_eval"]:

@@ -131,10 +131,10 @@ class SNNtorch_ConvLIF(nn.Module):
         w_scale = math.sqrt(1 / input_size)
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
-        # Register fixed initializers so ONNX export contains clear constants
+        """ # Register fixed initializers so ONNX export contains clear constants
         # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
         init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
-        self.register_buffer("init_mem", init_mem)
+        self.register_buffer("init_mem", init_mem) """
 
         # Store detach option for compatibility
         self.detach = detach
@@ -277,13 +277,13 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         w_scale_rec = math.sqrt(1 / hidden_size)
         nn.init.uniform_(self.ff.weight, -w_scale_ff, w_scale_ff)
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
-        # Register fixed initializers so ONNX export contains clear constants
+        """ # Register fixed initializers so ONNX export contains clear constants
         # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
         init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
         self.register_buffer("init_mem", init_mem)
         # init_prev_spk: random binary {0,1} values with shape [1, C, 1, 1]
         init_prev_spk = (torch.rand(1, hidden_size, 1, 1) > 0.5).to(torch.float32)
-        self.register_buffer("init_prev_spk", init_prev_spk)
+        self.register_buffer("init_prev_spk", init_prev_spk) """
 
         # Store detach option for compatibility
         self.detach = detach
