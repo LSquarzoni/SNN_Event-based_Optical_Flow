@@ -68,31 +68,30 @@ class FireNet(BaseModel):
         
         quantization_config = unet_kwargs.get("quantization", {})
 
-        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[0], quantization_config=quantization_config)
+        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config)
 
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=rec_act, **self.kwargs[1], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[2], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         self.R1b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[3], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=rec_act, **self.kwargs[4], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[5], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
         self.R2b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, activation=ff_act, **self.kwargs[6], quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
         )
 
         self.pred = ConvLayer(
             base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
-            #base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property
@@ -243,7 +242,6 @@ class FireNet_short(BaseModel):
 
         self.pred = ConvLayer(
             base_num_channels, out_channels=2, kernel_size=1, activation="tanh", w_scale=self.w_scale_pred, quantization_config=quantization_config
-            #base_num_channels, out_channels=2, kernel_size=1, activation=None, w_scale=self.w_scale_pred, quantization_config=quantization_config
         )
 
     @property

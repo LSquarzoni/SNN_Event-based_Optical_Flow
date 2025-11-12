@@ -56,11 +56,11 @@ class ConvLayer(nn.Module):
             )
             self.activation = QuantTanh
         else:
-            self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=False)
+            self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
             
         if w_scale is not None:
             nn.init.uniform_(self.conv2d.weight, -w_scale, w_scale)
-            #nn.init.zeros_(self.conv2d.bias)
+            nn.init.zeros_(self.conv2d.bias)
 
         if activation is not None:
             if hasattr(torch, activation):

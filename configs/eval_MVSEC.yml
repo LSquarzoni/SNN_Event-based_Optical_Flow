@@ -1,6 +1,11 @@
 data:
+<<<<<<< HEAD
     path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
     #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+=======
+    #path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
+    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+>>>>>>> 1aa340e29875554bbe27022ca3bb99641104700b
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
@@ -35,7 +40,7 @@ model:
 
 metrics:
     name: [AEE, AE]  # AEE, NEE, AE
-    flow_scaling: 128 # 128 * (target res / original res) if we want to match the ground truth scaling in the dataloader
+    flow_scaling: 128
     heat_map: False
 
 loader:
@@ -43,8 +48,7 @@ loader:
     resolution: [32, 32] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
-    gpu: 0
-    output_crop: False
+    gpu: 3
 
 vis:
     enabled: False
