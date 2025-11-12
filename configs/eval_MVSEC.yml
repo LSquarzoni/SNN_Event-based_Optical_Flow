@@ -1,11 +1,6 @@
 data:
-<<<<<<< HEAD
     path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
-    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
-=======
     #path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
-    path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
->>>>>>> 1aa340e29875554bbe27022ca3bb99641104700b
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
