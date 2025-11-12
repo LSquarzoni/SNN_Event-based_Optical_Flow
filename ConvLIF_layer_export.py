@@ -22,9 +22,9 @@ def set_valueinfo_shape(value_proto, dims):
 # Settings for dummy input and model
 batch_size = 1
 input_channels = 2  # Input channels (e.g., event voxel bins or cnt encoding)
-hidden_channels = 4  # Hidden channels for ConvLIF layer
-height = 32
-width = 32
+hidden_channels = 256  # Hidden channels for ConvLIF layer
+height = 8
+width = 8
 kernel_size = 3
 
 pred_shape = [batch_size, input_channels, height, width]
