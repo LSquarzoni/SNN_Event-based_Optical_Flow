@@ -389,7 +389,7 @@ class custom_ConvLIF(nn.Module):
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
         # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
-        self.init_mem = torch.rand(1, hidden_size, 256, 256) * 0.8
+        self.init_mem = torch.rand(1, hidden_size, 8, 8) * 0.8
 
     def forward(self, input_, prev_state, residual=0):
         ff = self.ff(input_)
@@ -459,9 +459,9 @@ class custom_ConvLIFRecurrent(nn.Module):
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
 
         # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
-        self.init_mem = torch.rand(1, hidden_size, 256, 256) * 0.8
+        self.init_mem = torch.rand(1, hidden_size, 32, 32) * 0.8
         # init_prev_spk: random binary {0,1} values with shape [1, C, H, W]
-        self.init_prev_spk = (torch.rand(1, hidden_size, 256, 256) > 0.5).to(torch.float32)
+        self.init_prev_spk = (torch.rand(1, hidden_size, 32, 32) > 0.5).to(torch.float32)
 
     def forward(self, input_, prev_state, residual=0):
         ff = self.ff(input_)

@@ -624,9 +624,9 @@ class LIFFireNet(FireNet):
     """
     Spiking FireNet architecture of LIF neurons for dense optical flow estimation from events.
     """
-    head_neuron = SNNtorch_ConvLIF
-    ff_neuron = SNNtorch_ConvLIF
-    rec_neuron = SNNtorch_ConvLIFRecurrent
+    head_neuron = custom_ConvLIF
+    ff_neuron = custom_ConvLIF
+    rec_neuron = custom_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
 
@@ -769,7 +769,7 @@ class ConvLIF(torch.nn.Module):
     
     Wraps custom_ConvLIF to provide a simple model interface for export.
     """
-    def __init__(self, input_channels=2, hidden_channels=4, kernel_size=3, 
+    def __init__(self, input_channels=2, hidden_channels=256, kernel_size=3, 
                  leak=(0.0, 1.0), thresh=(0.0, 0.8), use_custom_op=True):
         super().__init__()
         self.input_channels = input_channels
@@ -851,7 +851,7 @@ class ConvLIF(torch.nn.Module):
         spk1 = out1[0]  # spikes from layer 1
         mem_out1 = out1[1]  # membrane state from layer 1
 
-        # Layer 2: spk1 -> conv2 -> LIF2
+        """ # Layer 2: spk1 -> conv2 -> LIF2
         ff2 = self.conv_lif2.ff(spk1)
         
         # Use init_mem from the second layer
@@ -860,7 +860,7 @@ class ConvLIF(torch.nn.Module):
         # Apply LIF2
         out2 = torch.ops.SNN_implementation.LIF(ff2, mem2, self.conv_lif2.beta, self.conv_lif2.threshold)
         spk2 = out2[0]  # final output spikes
-        mem_out2 = out2[1]  # membrane state from layer 2
+        mem_out2 = out2[1]  # membrane state from layer 2 """
 
         """ # Layer 3: spk2 -> conv3 -> LIF3
         ff3 = self.conv_lif3.ff(spk2)
@@ -873,6 +873,6 @@ class ConvLIF(torch.nn.Module):
         spk3 = out3[0]  # final output spikes
         mem_out3 = out3[1]  # membrane state from layer 3 """
 
-        pred = self.conv(spk2)
+        pred = self.conv(spk1)
 
         return pred
