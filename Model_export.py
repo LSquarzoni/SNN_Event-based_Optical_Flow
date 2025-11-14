@@ -88,7 +88,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
 
     # Only load weights if not dummy
     if args.runid != "dummy":
-        model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
+        model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
         model = load_model(args.runid, model, device, model_path_dir)
         pass
 
