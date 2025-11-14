@@ -105,17 +105,14 @@ class SNNtorch_ConvLIF(nn.Module):
                 per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),
             )
-            q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
-            self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
-                learn_beta=learn_leak,
-                learn_threshold=learn_thresh,
-                reset_mechanism=reset_mechanism,
-                reset_delay=False,
-                #state_quant=q_lif,
-            )
-            self.quant_identity = QuantIdentity(return_quant_tensor=True)
+            # Quantization layers for per-channel beta and threshold
+            self.quant_identity_beta = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_identity_thresh = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            # State quantization for membrane potential
+            self.q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
+            # We'll implement LIF dynamics manually for quantized version to support per-channel params
+            self.hard_reset = hard_reset
+            self.lif = None  # Don't use snn.Leaky when quantized
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
             self.lif = snn.Leaky(
@@ -150,8 +147,6 @@ class SNNtorch_ConvLIF(nn.Module):
             self.norm = None
 
     def forward(self, input_, prev_state, residual=0):
-        self.lif.threshold.data.clamp_(min=0.01)
-        
         # input current
         if self.norm is not None:
             input_ = self.norm(input_)
@@ -159,16 +154,46 @@ class SNNtorch_ConvLIF(nn.Module):
 
         # Extract membrane potential from prev_state for compatibility
         if prev_state is None:
-            mem = None
+            if self.quantization_config:
+                mem = torch.zeros(ff.shape[0], ff.shape[1], ff.shape[2], ff.shape[3], device=ff.device)
+            else:
+                mem = None
         else:
             mem = prev_state[0]  # First element is membrane potential
 
-        # Apply snn.Leaky neuron
-        spk, mem_out = self.lif(ff, mem)
+        # Apply LIF dynamics
+        if self.quantization_config:
+            # Manual LIF implementation with per-channel quantized parameters
+            beta_q = self.quant_identity_beta(self.beta).clamp(0.0, 1.0)  # [C, 1, 1]
+            thresh_q = self.quant_identity_thresh(self.threshold).clamp(min=0.01)  # [C, 1, 1]
+            
+            # LIF dynamics: mem = beta * mem + input
+            mem = beta_q * mem + ff
+            
+            # Quantize membrane potential
+            #mem = self.q_lif(mem)
+            
+            # Generate spikes: spk = (mem >= threshold)
+            spk = (mem >= thresh_q).float()
+            
+            # Reset mechanism
+            if self.hard_reset:
+                # Hard reset: mem = mem * (1 - spk)
+                mem_out = mem * (1.0 - spk)
+            else:
+                # Soft reset: mem = mem - spk * threshold
+                mem_out = mem - spk * thresh_q
+        else:
+            # Use snn.Leaky for non-quantized version
+            self.lif.threshold.data.clamp_(min=0.01)
+            spk, mem_out = self.lif(ff, mem)
 
         # Detach the output membrane potential to ensure clean state transitions
         if self.detach:
-            self.lif.detach_hidden()
+            if self.quantization_config:
+                mem_out = mem_out.detach()
+            else:
+                self.lif.detach_hidden()
 
         # Create new state compatible with original interface
         new_state = torch.stack([mem_out, spk])
@@ -249,17 +274,15 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
                 scaling_stats_permute_dims=(1, 0, 2, 3),
             )
-            q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
-            self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
-                learn_beta=learn_leak,
-                learn_threshold=learn_thresh,
-                reset_mechanism=reset_mechanism,
-                reset_delay=False,
-                #state_quant=q_lif,
-            )
-            self.quant_identity = QuantIdentity(return_quant_tensor=True)
+            # Quantization layers for per-channel beta and threshold
+            self.quant_identity_beta = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_identity_thresh = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_add = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            # State quantization for membrane potential
+            self.q_lif = quant.state_quant(num_bits=8, uniform=False, thr_centered=True)
+            # We'll implement LIF dynamics manually for quantized version to support per-channel params
+            self.hard_reset = hard_reset
+            self.lif = None  # Don't use snn.Leaky when quantized
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
@@ -304,8 +327,6 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.norm_rec = None
 
     def forward(self, input_, prev_state, residual=0):
-        self.lif.threshold.data.clamp_(min=0.01)
-        
         # input current
         if self.norm_ff is not None:
             input_ = self.norm_ff(input_)
@@ -313,8 +334,12 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
 
         # Extract membrane potential and previous spikes from prev_state
         if prev_state is None:
-            mem = None
-            prev_spk = torch.zeros_like(ff)
+            if self.quantization_config:
+                mem = torch.zeros_like(ff)
+                prev_spk = torch.zeros_like(ff)
+            else:
+                mem = None
+                prev_spk = torch.zeros_like(ff)
         else:
             mem = prev_state[0]  # membrane potential
             prev_spk = prev_state[1]  # previous spikes
@@ -326,16 +351,47 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
 
         # Combine feedforward and recurrent currents
         if self.quantization_config:
-            total_current = self.quant_identity(ff) + self.quant_identity(rec)
+            # Need to dequantize before adding because scaling factors are different
+            # Then requantize the sum
+            ff_float = ff.value if hasattr(ff, 'value') else ff
+            rec_float = rec.value if hasattr(rec, 'value') else rec
+            total_current = self.quant_add(ff_float + rec_float)
         else:
             total_current = ff + rec
 
-        # Apply snn.Leaky neuron
-        spk_out, mem_out = self.lif(total_current, mem)
+        # Apply LIF dynamics
+        if self.quantization_config:
+            # Manual LIF implementation with per-channel quantized parameters
+            beta_q = self.quant_identity_beta(self.beta).clamp(0.0, 1.0)  # [C, 1, 1]
+            thresh_q = self.quant_identity_thresh(self.threshold).clamp(min=0.01)  # [C, 1, 1]
+            
+            # LIF dynamics: mem = beta * mem + input
+            mem = beta_q * mem + total_current
+            
+            # Quantize membrane potential
+            #mem = self.q_lif(mem)
+            
+            # Generate spikes: spk = (mem >= threshold)
+            spk_out = (mem >= thresh_q).float()
+            
+            # Reset mechanism
+            if self.hard_reset:
+                # Hard reset: mem = mem * (1 - spk)
+                mem_out = mem * (1.0 - spk_out)
+            else:
+                # Soft reset: mem = mem - spk * threshold
+                mem_out = mem - spk_out * thresh_q
+        else:
+            # Use snn.Leaky for non-quantized version
+            self.lif.threshold.data.clamp_(min=0.01)
+            spk_out, mem_out = self.lif(total_current, mem)
 
         # Detach the output membrane potential to ensure clean state transitions
         if self.detach:
-            self.lif.detach_hidden()
+            if self.quantization_config:
+                mem_out = mem_out.detach()
+            else:
+                self.lif.detach_hidden()
 
         # Create new state compatible with original interface
         new_state = torch.stack([mem_out, spk_out])
