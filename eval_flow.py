@@ -341,7 +341,7 @@ def test(args, config_parser):
                 results[metric + "_percent"] = {}
             for key in val_results.keys():
                 results[metric][key] = str(val_results[key][metric]["metric"] / val_results[key][metric]["it"])
-                if metric in ["AEE", "NEE", "AE"]:
+                if metric in ["AEE", "NEE", "AAE"]:
                     results[metric + "_percent"][key] = str(
                         val_results[key][metric]["percent"] / val_results[key][metric]["it"]
                     )
@@ -351,7 +351,7 @@ def test(args, config_parser):
     if not args.debug and "metrics" in config.keys() and config["metrics"].get("heat_map", False):
         print("\nSaving aggregated error heatmaps...")
         for i, metric in enumerate(config["metrics"]["name"]):
-            if metric in ["AEE", "AAE"]:  # Only these metrics support heatmap visualization
+            if metric in ["AEE", "AAE", "NAAE"]:  # Only these metrics support heatmap visualization
                 heatmap_dir = os.path.join(path_results, "heatmaps")
                 os.makedirs(heatmap_dir, exist_ok=True)
                 

@@ -1,14 +1,14 @@
 data:
     #path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
-    mode: gtflow_dt4 # gtflow_dt1/gtflow_dt4
-    window: 0.25 # 1 for dt1, 0.25 for dt4
+    mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
+    window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
 
 model:
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         type: int8 # int8 or int16
         PTQ: False # Post Training Quantization enabled or not
 
@@ -43,7 +43,7 @@ loader:
     resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
-    gpu: 3
+    gpu: 2
 
 vis:
     enabled: False
