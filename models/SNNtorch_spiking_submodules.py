@@ -171,7 +171,7 @@ class SNNtorch_ConvLIF(nn.Module):
             mem = beta_q * mem + ff
             
             # Quantize membrane potential
-            #mem = self.q_lif(mem)
+            mem = self.q_lif(mem)
             
             # Generate spikes: spk = (mem >= threshold)
             spk = (mem >= thresh_q).float()
@@ -369,7 +369,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             mem = beta_q * mem + total_current
             
             # Quantize membrane potential
-            #mem = self.q_lif(mem)
+            mem = self.q_lif(mem)
             
             # Generate spikes: spk = (mem >= threshold)
             spk_out = (mem >= thresh_q).float()

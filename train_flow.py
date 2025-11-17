@@ -20,7 +20,6 @@ from models.model import (
     LIFFireNet_short,
     LIFFireFlowNet,
     LIFFireFlowNet_short,
-    FC_1l_100x100
 )
 from utils.gradients import get_grads
 from utils.utils import load_model, save_csv, save_diff, save_model
@@ -245,7 +244,7 @@ def train(args, config_parser):
                                 print(f"Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder with incremented counter
-                        base_model_path = "mlruns/0/models/LIFFN_best2/"
+                        base_model_path = "mlruns/0/models/LIFFN_int8/"
                         model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
                         
                         try:
