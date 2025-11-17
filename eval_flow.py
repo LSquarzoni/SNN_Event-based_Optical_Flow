@@ -15,7 +15,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader, H5Loader_original
-from loss.flow import AEE, NEE, AE
+from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans
 from models.model import (
     FireNet,
     FireNet_short,
@@ -281,10 +281,10 @@ def test(args, config_parser):
                                             val_results[filename][metric] = {}
                                             val_results[filename][metric]["metric"] = 0
                                             val_results[filename][metric]["it"] = 0
-                                            if metric in ["AEE", "NEE", "AE"]:
+                                            if metric in ["AEE", "NEE", "AAE"]:
                                                 val_results[filename][metric]["percent"] = 0
                                     val_results[filename][metric]["it"] += 1
-                                    if metric in ["AEE", "NEE", "AE"]:
+                                    if metric in ["AEE", "NEE", "AAE"]:
                                         val_results[filename][metric]["metric"] += val_metric[0][batch].cpu().numpy()
                                         val_results[filename][metric]["percent"] += val_metric[1][batch].cpu().numpy()
                                     else:
@@ -337,7 +337,7 @@ def test(args, config_parser):
     if not args.debug and "metrics" in config.keys():
         for metric in config["metrics"]["name"]:
             results[metric] = {}
-            if metric in ["AEE", "NEE", "AE"]:
+            if metric in ["AEE", "NEE", "AAE"]:
                 results[metric + "_percent"] = {}
             for key in val_results.keys():
                 results[metric][key] = str(val_results[key][metric]["metric"] / val_results[key][metric]["it"])
@@ -351,7 +351,7 @@ def test(args, config_parser):
     if not args.debug and "metrics" in config.keys() and config["metrics"].get("heat_map", False):
         print("\nSaving aggregated error heatmaps...")
         for i, metric in enumerate(config["metrics"]["name"]):
-            if metric in ["AEE", "AE"]:  # Only these metrics support heatmap visualization
+            if metric in ["AEE", "AAE"]:  # Only these metrics support heatmap visualization
                 heatmap_dir = os.path.join(path_results, "heatmaps")
                 os.makedirs(heatmap_dir, exist_ok=True)
                 

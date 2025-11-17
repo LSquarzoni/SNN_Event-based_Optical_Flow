@@ -12,7 +12,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import AEE, NEE, AE
+from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans
 from models.model import (
     LIFFireNet,
     LIFFireNet_short,

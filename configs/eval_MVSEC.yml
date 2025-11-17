@@ -34,7 +34,7 @@ model:
 # ----------------------------------------------------------------------------------------
 
 metrics:
-    name: [AEE, AE]  # AEE, NEE, AE
+    name: ["AEE", "AAE", "NAAE", "AE_ofMeans"]
     flow_scaling: 128
     heat_map: False
 

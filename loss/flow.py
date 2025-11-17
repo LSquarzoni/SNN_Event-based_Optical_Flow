@@ -681,7 +681,7 @@ class NEE(BaseValidationLoss):
 
         return NEE, percent_NEE
     
-class AE(BaseValidationLoss):
+class AAE(BaseValidationLoss):
     """
     Angular Error loss: angle between predicted and ground truth flow vectors.
     """
@@ -704,15 +704,15 @@ class AE(BaseValidationLoss):
         # Dot product
         dot = torch.sum(flow * self._gtflow, dim=1)
         
-        # compute AE
+        # compute AAE
         cos_angle = (flow_norm * gtflow_norm) / (dot + 0.01)
         cos_angle = torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5)
         error = torch.acos(cos_angle) # result in radiants
         
-        # AE not computed in pixels without events
+        # AAE not computed in pixels without events
         event_mask = self._event_mask[:, -1, :, :].bool()
 
-        # AE not computed in pixels without valid ground truth
+        # AAE not computed in pixels without valid ground truth
         gtflow_mask_x = self._gtflow[:, 0, :, :] == 0.0
         gtflow_mask_y = self._gtflow[:, 1, :, :] == 0.0
         gtflow_mask = ~(gtflow_mask_x & gtflow_mask_y)
@@ -731,10 +731,131 @@ class AE(BaseValidationLoss):
 
         # Mean angular error per sample
         num_valid_px = torch.sum(mask, dim=1)
-        AE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
+        AAE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
 
         # Outlier definition: angular error > 30 degrees (π/6 rad)
         outliers = error > (np.pi / 6)
-        percent_AE = outliers.sum(dim=1) / (num_valid_px + 1e-9)
+        percent_AAE = outliers.sum(dim=1) / (num_valid_px + 1e-9)
 
-        return AE, percent_AE
+        return AAE, percent_AAE
+    
+class NAAE(BaseValidationLoss):
+    """
+    Normalized Average Angular Error: AAE normalized by the magnitude of the estimated flow.
+    """
+
+    def __init__(self, config, device, flow_scaling=128):
+        super().__init__(config, device, flow_scaling)
+
+    @property
+    def num_events(self):
+        return float("inf")
+    
+    def forward(self):
+
+        # convert flow
+        flow = self._flow_map[-1] * self.flow_scaling
+        flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
+        flow_norm = torch.norm(flow, dim=1, keepdim=True)
+        gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
+        
+        # Dot product
+        dot = torch.sum(flow * self._gtflow, dim=1)
+        
+        # compute angular error
+        cos_angle = dot / (flow_norm.squeeze(1) * gtflow_norm.squeeze(1) + 1e-9)
+        cos_angle = torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5)
+        angular_error = torch.acos(cos_angle)  # result in radians
+        
+        # Normalize by flow magnitude
+        error = angular_error / (flow_norm.squeeze(1) + 1e-9)
+        
+        # NAAE not computed in pixels without events
+        event_mask = self._event_mask[:, -1, :, :].bool()
+
+        # NAAE not computed in pixels without valid ground truth
+        gtflow_mask_x = self._gtflow[:, 0, :, :] == 0.0
+        gtflow_mask_y = self._gtflow[:, 1, :, :] == 0.0
+        gtflow_mask = ~(gtflow_mask_x & gtflow_mask_y)
+
+        # Apply masks
+        mask = event_mask & gtflow_mask
+        
+        # Accumulate full error heatmap (before final masking for averaging)
+        full_mask = mask.float()
+        self.accumulate_error_heatmap(error, full_mask)
+        
+        mask = mask.view(flow.shape[0], -1)
+        error = error.view(flow.shape[0], -1)
+
+        error = error * mask
+
+        # Mean normalized angular error per sample
+        num_valid_px = torch.sum(mask, dim=1)
+        NAAE = torch.sum(error, dim=1) / (num_valid_px + 1e-9)
+
+        return NAAE
+    
+    
+class AE_ofMeans(BaseValidationLoss):
+    """
+    Angular Error of Means: angular error computed between the mean of ground truth vectors 
+    and the mean of predicted flow vectors.
+    """
+
+    def __init__(self, config, device, flow_scaling=128):
+        super().__init__(config, device, flow_scaling)
+
+    @property
+    def num_events(self):
+        return float("inf")
+    
+    def forward(self):
+
+        # convert flow
+        flow = self._flow_map[-1] * self.flow_scaling
+        flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
+        
+        # AE_ofMeans not computed in pixels without events
+        event_mask = self._event_mask[:, -1, :, :].bool()
+
+        # AE_ofMeans not computed in pixels without valid ground truth
+        gtflow_mask_x = self._gtflow[:, 0, :, :] == 0.0
+        gtflow_mask_y = self._gtflow[:, 1, :, :] == 0.0
+        gtflow_mask = ~(gtflow_mask_x & gtflow_mask_y)
+
+        # Apply masks
+        mask = event_mask & gtflow_mask
+        
+        # Expand mask to both flow dimensions
+        mask_expanded = mask.unsqueeze(1).expand_as(flow)  # [B, 2, H, W]
+        
+        # Apply mask to flows
+        flow_masked = flow * mask_expanded.float()
+        gtflow_masked = self._gtflow * mask_expanded.float()
+        
+        # Compute mean vectors per batch
+        num_valid_px = mask.sum(dim=[1, 2], keepdim=True).unsqueeze(1)  # [B, 1, 1, 1]
+        mean_flow = flow_masked.sum(dim=[2, 3], keepdim=True) / (num_valid_px + 1e-9)  # [B, 2, 1, 1]
+        mean_gtflow = gtflow_masked.sum(dim=[2, 3], keepdim=True) / (num_valid_px + 1e-9)  # [B, 2, 1, 1]
+        
+        # Compute angular error between mean vectors
+        mean_flow_norm = torch.norm(mean_flow, dim=1, keepdim=True)  # [B, 1, 1, 1]
+        mean_gtflow_norm = torch.norm(mean_gtflow, dim=1, keepdim=True)  # [B, 1, 1, 1]
+        
+        # Dot product
+        dot = torch.sum(mean_flow * mean_gtflow, dim=1, keepdim=True)  # [B, 1, 1, 1]
+        
+        # Compute angular error
+        cos_angle = dot / (mean_flow_norm * mean_gtflow_norm + 1e-9)
+        cos_angle = torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5)
+        AE_ofMeans = torch.acos(cos_angle)  # result in radians, [B, 1, 1, 1]
+        
+        # Squeeze to get [B] shape
+        AE_ofMeans = AE_ofMeans.squeeze()
+        
+        # If batch size is 1, ensure it's still a 1D tensor
+        if AE_ofMeans.dim() == 0:
+            AE_ofMeans = AE_ofMeans.unsqueeze(0)
+
+        return AE_ofMeans
