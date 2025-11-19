@@ -8,7 +8,7 @@ from torch.optim import *
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import EventWarping, AEE, AE
+from loss.flow import EventWarping, AEE, AAE
 from models.model import (
     FireNet,
     FireNet_short,
@@ -62,7 +62,7 @@ def create_validation_loader(train_config, validation_config_path):
         # Create validation metrics
         val_metrics = {
             "AEE": AEE(val_config, val_config_parser.device, flow_scaling=val_config["metrics"]["flow_scaling"]),
-            "AE": AE(val_config, val_config_parser.device, flow_scaling=val_config["metrics"]["flow_scaling"])
+            "AAE": AAE(val_config, val_config_parser.device, flow_scaling=val_config["metrics"]["flow_scaling"])
         }
         
         return val_dataloader, val_data, val_metrics, val_config
@@ -73,8 +73,8 @@ def create_validation_loader(train_config, validation_config_path):
 def validate_model(model, val_dataloader, val_data, val_metrics, val_config, device):
     """Run validation on MVSEC dataset"""
     model.eval()
-    val_results = {"AEE": 0.0, "AE": 0.0}
-    val_counts = {"AEE": 0, "AE": 0}
+    val_results = {"AEE": 0.0, "AAE": 0.0}
+    val_counts = {"AEE": 0, "AAE": 0}
     
     with torch.no_grad():
         val_data.seq_num = 0
@@ -219,7 +219,7 @@ def train(args, config_parser):
                 
                 # Print epoch summary with both training loss and validation results
                 if validation_enabled and val_results:
-                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AEE: {val_results.get('AEE', 'N/A'):.4f}, Validation AE: {val_results.get('AE', 'N/A'):.4f}")
+                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AEE: {val_results.get('AEE', 'N/A'):.4f}, Validation AAE: {val_results.get('AAE', 'N/A'):.4f}")
                 else:
                     print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
 
@@ -227,8 +227,8 @@ def train(args, config_parser):
                     # Use combined metric for model selection if validation is enabled
                     if validation_enabled and val_results:
                         # Weighted sum (equal weights here, adjust as needed)
-                        current_metric = 0.5 * val_results.get('AEE', avg_train_loss) + 0.5 * val_results.get('AE', avg_train_loss)
-                        best_metric = 0.5 * best_val_aee + 0.5 * best_val_ae if ('best_val_ae' in locals()) else float('inf')
+                        current_metric = 0.5 * val_results.get('AEE', avg_train_loss) + 0.5 * val_results.get('AAE', avg_train_loss)
+                        best_metric = 0.5 * best_val_aee + 0.5 * best_val_aae if ('best_val_aae' in locals()) else float('inf')
                     else:
                         current_metric = avg_train_loss
                         best_metric = best_loss
@@ -244,7 +244,7 @@ def train(args, config_parser):
                                 print(f"Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder with incremented counter
-                        base_model_path = "mlruns/0/models/LIFFN_int8/"
+                        base_model_path = "mlruns/0/models/LIFFN_256x256/"
                         model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
                         
                         try:

@@ -18,10 +18,10 @@ class Visualization:
         self.px = kwargs["vis"]["px"]
         self.color_scheme = "green_red"  # gray / blue_red / green_red
         # visualization brightness scale for flow images (1.0 = unchanged)
-        self.v_scale = float(kwargs["vis"].get("v_scale", 0.5))
+        self.v_scale = float(kwargs["vis"].get("v_scale", 1))
         # value (V) to use for uniform non-zero flow fields (0..1). This
         # prevents uniform fields from being mapped to full brightness.
-        self.v_uniform = float(kwargs["vis"].get("v_uniform", 0.5))
+        self.v_uniform = float(kwargs["vis"].get("v_uniform", 1))
         self.last_store_ts = None  # for controlling store rate
         self.store_interval = kwargs["vis"].get("store_interval", 5.0)  # seconds
         self.vis_type = vis_type

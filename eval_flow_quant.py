@@ -12,7 +12,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans
+from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans, AAE_Weighted, AAE_Filtered
 from models.model import (
     LIFFireNet,
     LIFFireNet_short,
@@ -25,20 +25,38 @@ from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization
 
 
-def calibrate_model_ptq(calibration_loader, model, device, num_batches=50):
+def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calibrate_states_only=False):
     """
     Calibrate the model for Post-Training Quantization (PTQ).
     This collects statistics to initialize quantization parameters without training.
+    
+    Args:
+        calibrate_states_only: If True, only calibrate state quantizers (for QAT models).
+                               If False, calibrate all quantizers (for PTQ models).
     """
     print("="*60)
-    print("Starting PTQ Calibration...")
+    if calibrate_states_only:
+        print("Starting State-Only Calibration (QAT mode)...")
+        print("Preserving trained weight/activation quantizers")
+    else:
+        print("Starting Full PTQ Calibration...")
     print(f"Using {num_batches} batches for calibration")
     print("="*60)
     
     model = model.to(device)
     model.eval()
     
-    with calibration_mode(model):
+    if calibrate_states_only:
+        # For QAT models: only calibrate state quantizers (q_lif)
+        # Preserve trained weight and activation quantizers
+        state_quantizers = []
+        for name, module in model.named_modules():
+            if hasattr(module, 'q_lif'):
+                state_quantizers.append(module.q_lif)
+        
+        print(f"Found {len(state_quantizers)} state quantizers to calibrate")
+        
+        # Manual calibration for state quantizers only
         with torch.no_grad():
             for batch_idx, item in enumerate(calibration_loader):
                 if batch_idx >= num_batches:
@@ -47,13 +65,29 @@ def calibrate_model_ptq(calibration_loader, model, device, num_batches=50):
                 x = item["event_voxel"].to(device)
                 cnt = item["event_cnt"].to(device)
                 
-                # Forward pass for calibration
+                # Forward pass - state quantizers will collect statistics
                 model(x, cnt)
                 
                 if (batch_idx + 1) % 10 == 0:
                     print(f"Calibration progress: {batch_idx + 1}/{num_batches} batches")
+    else:
+        # For PTQ models: calibrate everything
+        with calibration_mode(model):
+            with torch.no_grad():
+                for batch_idx, item in enumerate(calibration_loader):
+                    if batch_idx >= num_batches:
+                        break
+                    
+                    x = item["event_voxel"].to(device)
+                    cnt = item["event_cnt"].to(device)
+                    
+                    # Forward pass for calibration
+                    model(x, cnt)
+                    
+                    if (batch_idx + 1) % 10 == 0:
+                        print(f"Calibration progress: {batch_idx + 1}/{num_batches} batches")
     
-    print("PTQ Calibration completed!")
+    print("Calibration completed!")
     print("="*60)
     return model
 
@@ -80,8 +114,8 @@ def test_quantized(args, config_parser):
 
     if "AEE" in config["metrics"]["name"]:
         if not config["loss"]["overwrite_intermediate"]:
-            config["loss"]["overwrite_intermediate"] = True
-            print("Warning: 'overwrite_intermediate' set to True for AEE computation")
+            config["loss"]["overwrite_intermediate"] = False
+            #print("Warning: 'overwrite_intermediate' set to True for AEE computation")
 
     if config["data"]["mode"] == "frames":
         raise NotImplementedError("Frame mode not supported")
@@ -161,10 +195,10 @@ def test_quantized(args, config_parser):
         print("Note: Loading with strict=False to handle potential architecture differences")
         model = load_model(args.runid, model, device, model_path_dir=model_path_dir, strict=False)
         
-        # Calibration for PTQ
-        print("\nCalibrating model for PTQ...")
+        # Calibration for PTQ - calibrate ALL quantizers
+        print("\nCalibrating model for PTQ (full calibration)...")
         calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 50
-        model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches)
+        model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches, calibrate_states_only=False)
         
         print("\nPTQ model ready for evaluation")
         print("Note: This uses fake quantization (FP32 compute with quantization simulation)")
@@ -173,7 +207,7 @@ def test_quantized(args, config_parser):
         print("\nLoading QAT quantized model checkpoint...")
         
         # QAT MODELS:
-        model_path_dir = "mlruns/0/models/LIFFN_int8/model_quant_best.pth" # runid: d5ac111464894b2e8379baaa538eeca7
+        model_path_dir = "mlruns/0/models/LIFFN_int8/model_quant_best.pth" # runid: ce65b7377b62490f8a9caba91508963f
         #model_path_dir = "mlruns/0/models/LIFFN_16ch_int8/model_quant_best.pth" # runid: 
         #model_path_dir = "mlruns/0/models/LIFFN_8ch_int8/model_quant_best.pth" # runid: 
         #model_path_dir = "mlruns/0/models/LIFFN_short_int8/model_quant_best.pth" # runid: 
@@ -192,13 +226,34 @@ def test_quantized(args, config_parser):
             print(f"\nMoving quantization metadata to {device}...")
             model = model.to(device)
             
-            # Calibrate state quantization if QAT was trained without it
-            # (QAT models typically don't have state quantization due to VRAM constraints)
-            if hasattr(args, 'calibration_batches') and args.calibration_batches > 0:
-                print("\nCalibrating state quantization for QAT model...")
-                print("(QAT trained weights/activations, now calibrating states only)")
-                calibration_batches = args.calibration_batches
-                model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches)
+            # Option 1: Mixed precision (FP32 states) - set calibration_batches to 0
+            # Option 2: Calibrate states only - set calibration_batches > 0
+            calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 0
+            
+            if calibration_batches > 0:
+                print("\n" + "="*80)
+                print("WARNING: Calibrating state quantizers for QAT model")
+                print("This will calibrate ONLY the state quantizers (q_lif)")
+                print("Trained weight/activation quantizers will be preserved")
+                print("="*80)
+                model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches, calibrate_states_only=True)
+            else:
+                # CRITICAL: Disable state quantization during training to save VRAM and improve stability
+                # State quantization will be calibrated during evaluation
+                print("\nDisabling state quantization during training (will be calibrated at evaluation)...")
+                state_quantizers_disabled = 0
+                for name, module in model.named_modules():
+                    if hasattr(module, 'q_lif'):
+                        # Replace state quantizer with identity function
+                        module.q_lif = torch.nn.Identity()
+                        state_quantizers_disabled += 1
+                    if state_quantizers_disabled > 0:
+                        print(f"Disabled {state_quantizers_disabled} state quantizers to save VRAM")
+                        print("Note: Weights, activations, beta, threshold are still quantized (QAT)")
+                print("\n" + "="*80)
+                print("Mixed Precision Mode: States will remain at FP32")
+                print("Weights and activations use trained QAT quantization")
+                print("="*80)
         else:
             print("Error: model_path_dir not set for QAT evaluation")
             return
@@ -407,7 +462,7 @@ if __name__ == "__main__":
         "--calibration_batches",
         type=int,
         default=50,
-        help="Number of batches for PTQ calibration (only used if PTQ=True)",
+        help="Number of batches for calibration. PTQ: calibrates all quantizers. QAT: if >0 calibrates states only, if 0 uses mixed precision (FP32 states)",
     )
     parser.add_argument(
         "--path_results",
