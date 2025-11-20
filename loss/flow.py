@@ -65,11 +65,6 @@ class EventWarping(torch.nn.Module):
 
         # flow vector per input event
         flow_idx = event_list[:, :, 1:3].clone()
-        
-        # Clamp coordinates to prevent any edge case out-of-bounds
-        flow_idx[:, :, 0] = torch.clamp(flow_idx[:, :, 0], 0, self.res[0] - 1)
-        flow_idx[:, :, 1] = torch.clamp(flow_idx[:, :, 1], 0, self.res[1] - 1)
-        
         flow_idx[:, :, 0] *= self.res[1]  # torch.view is row-major
         flow_idx = torch.sum(flow_idx, dim=2)
 
@@ -332,7 +327,6 @@ class BaseValidationLoss(torch.nn.Module):
         # Aggregated error heatmap storage for visualization across all batches
         self._aggregated_error_map = None
         self._aggregated_mask_map = None
-        self._aggregated_magnitude_map = None  # Accumulate flow magnitudes for visualization
         self._std_resolution = config["loader"].get("std_resolution", self.res)  # Full resolution for heatmaps
 
     @property
@@ -481,14 +475,13 @@ class BaseValidationLoss(torch.nn.Module):
 
         return torch.cat([fw_iwe_pos, fw_iwe_neg], dim=1)
 
-    def accumulate_error_heatmap(self, error_map, mask_map, magnitude_map=None):
+    def accumulate_error_heatmap(self, error_map, mask_map):
         """
         Accumulate error heatmap across batches for final aggregated visualization.
         Accumulates WEIGHTED errors: sum(error * mask) and sum(mask), then divides to get mean.
         
         :param error_map: [batch_size x H x W] per-pixel errors (from current batch)
         :param mask_map: [batch_size x H x W] validity mask (1 = valid pixel, 0 = invalid)
-        :param magnitude_map: [batch_size x H x W] per-pixel flow magnitudes (optional)
         """
         error_map = error_map.detach().cpu().float()
         mask_map = mask_map.detach().cpu().float()
@@ -505,61 +498,36 @@ class BaseValidationLoss(torch.nn.Module):
         else:
             self._aggregated_error_map += batch_error_sum
             self._aggregated_mask_map += batch_sample_count
-        
-        # Accumulate flow magnitudes if provided
-        if magnitude_map is not None:
-            magnitude_map = magnitude_map.detach().cpu().float()
-            masked_magnitude = magnitude_map * mask_map
-            batch_magnitude_sum = masked_magnitude.sum(dim=0)  # [H x W]
-            
-            if self._aggregated_magnitude_map is None:
-                self._aggregated_magnitude_map = batch_magnitude_sum
-            else:
-                self._aggregated_magnitude_map += batch_magnitude_sum
 
     def get_final_error_heatmap(self):
         """
-        Get the final aggregated error heatmap with averaged errors and magnitudes.
+        Get the final aggregated error heatmap with averaged errors.
         
-        :return: averaged_error_map [H x W], valid_pixel_count [H x W], averaged_magnitude_map [H x W] (or None)
+        :return: averaged_error_map [H x W], valid_pixel_count [H x W]
         """
         if self._aggregated_error_map is None or self._aggregated_mask_map is None:
-            return None, None, None
+            return None, None
         
         # Average errors by dividing by pixel count (avoid division by zero)
         averaged_error = self._aggregated_error_map / (self._aggregated_mask_map + 1e-9)
         
-        # Average magnitudes if available
-        averaged_magnitude = None
-        if self._aggregated_magnitude_map is not None:
-            averaged_magnitude = self._aggregated_magnitude_map / (self._aggregated_mask_map + 1e-9)
-        
-        return averaged_error, self._aggregated_mask_map, averaged_magnitude
+        return averaged_error, self._aggregated_mask_map
 
-    def save_error_heatmap(self, save_path, title="Error Heatmap", cmap="jet", 
-                          mag_threshold=0.5, show_magnitude_overlay=True, 
-                          save_magnitude_map=True, save_combined=True):
+    def save_error_heatmap(self, save_path, title="Error Heatmap", cmap="jet"):
         """
-        Save the final aggregated error heatmap as an image with optional magnitude visualization.
+        Save the final aggregated error heatmap as an image.
         
-        :param save_path: path to save the heatmap image (without extension)
+        :param save_path: path to save the heatmap image
         :param title: title of the figure
-        :param cmap: colormap to use for error (default: 'jet')
-        :param mag_threshold: threshold for low magnitude indicator (default: 0.5 pixels)
-        :param show_magnitude_overlay: if True, overlay semi-transparent mask on low-magnitude regions
-        :param save_magnitude_map: if True, save a separate magnitude heatmap
-        :param save_combined: if True, save a side-by-side error+magnitude visualization
+        :param cmap: colormap to use (default: 'jet')
         """
         try:
             import matplotlib.pyplot as plt
-            import matplotlib.patches as mpatches
-            from matplotlib.colors import ListedColormap, BoundaryNorm
-            import numpy as np
         except ImportError:
             print("Warning: matplotlib not installed. Install with: pip install matplotlib")
             return False
         
-        averaged_error, pixel_count, averaged_magnitude = self.get_final_error_heatmap()
+        averaged_error, pixel_count = self.get_final_error_heatmap()
         if averaged_error is None:
             print("No error heatmap available")
             return False
@@ -569,8 +537,6 @@ class BaseValidationLoss(torch.nn.Module):
             averaged_error = averaged_error.squeeze(0)
         if pixel_count.dim() > 2:
             pixel_count = pixel_count.squeeze(0)
-        if averaged_magnitude is not None and averaged_magnitude.dim() > 2:
-            averaged_magnitude = averaged_magnitude.squeeze(0)
         
         # Create visualization (set pixels with no samples to NaN)
         error_vis = averaged_error.clone().float()
@@ -588,125 +554,24 @@ class BaseValidationLoss(torch.nn.Module):
         else:
             error_vis_clipped = error_vis
         
-        # Convert to numpy for matplotlib
-        error_np = error_vis_clipped.numpy()
-        
-        # === MAIN ERROR HEATMAP WITH OPTIONAL MAGNITUDE OVERLAY ===
-        fig, ax = plt.subplots(figsize=(14, 11))
-        im = ax.imshow(error_np, cmap=cmap, aspect='auto')
-        
-        # Overlay low-magnitude regions if requested and magnitude data is available
-        if show_magnitude_overlay and averaged_magnitude is not None:
-            mag_vis = averaged_magnitude.clone().float()
-            mag_vis[pixel_count == 0] = float('nan')
-            mag_np = mag_vis.numpy()
-            
-            # Create semi-transparent overlay for low-magnitude regions
-            low_mag_mask = mag_np < mag_threshold
-            overlay = np.zeros((*low_mag_mask.shape, 4))  # RGBA
-            overlay[low_mag_mask] = [0.7, 0.7, 0.7, 0.4]  # Grey with 40% opacity
-            ax.imshow(overlay, aspect='auto', interpolation='none')
-            
-            # Add legend for the overlay
-            grey_patch = mpatches.Patch(color=(0.7, 0.7, 0.7, 0.4), 
-                                       label=f'Low magnitude (<{mag_threshold} px)')
-            ax.legend(handles=[grey_patch], loc='upper right', fontsize=10, framealpha=0.9)
-        
-        ax.set_title(title, fontsize=14, fontweight='bold')
-        ax.set_xlabel("Width (pixels)", fontsize=11)
-        ax.set_ylabel("Height (pixels)", fontsize=11)
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 10))
+        im = ax.imshow(error_vis_clipped.numpy(), cmap=cmap, aspect='auto')
+        ax.set_title(title, fontsize=14)
+        ax.set_xlabel("Width (pixels)")
+        ax.set_ylabel("Height (pixels)")
         
         # Add colorbar with min/max info
-        cbar = plt.colorbar(im, ax=ax, label="Average Error", fraction=0.046, pad=0.04)
+        cbar = plt.colorbar(im, ax=ax, label="Average Error (clipped to 95th percentile)")
         
         # Add grid
-        ax.grid(True, alpha=0.2, linestyle='--', linewidth=0.5)
+        ax.grid(True, alpha=0.3)
         
-        # Add statistics text
-        stats_text = f"Error range: {valid_errors.min():.4f} - {valid_errors.max():.4f}\n"
-        stats_text += f"Mean: {valid_errors.mean():.4f} | Median: {valid_errors.median():.4f}\n"
-        stats_text += f"95th percentile: {p95:.4f} (clipped)"
-        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        # Save main figure
-        main_path = save_path if save_path.endswith('.png') else f"{save_path}_error.png"
-        plt.savefig(main_path, dpi=150, bbox_inches='tight')
-        print(f"Error heatmap saved to {main_path}")
-        plt.close(fig)
-        
-        # === MAGNITUDE HEATMAP (SEPARATE) ===
-        if save_magnitude_map and averaged_magnitude is not None:
-            fig_mag, ax_mag = plt.subplots(figsize=(14, 11))
-            
-            mag_vis = averaged_magnitude.clone().float()
-            mag_vis[pixel_count == 0] = float('nan')
-            mag_np = mag_vis.numpy()
-            
-            # Use grayscale or viridis for magnitude
-            im_mag = ax_mag.imshow(mag_np, cmap='viridis', aspect='auto')
-            ax_mag.set_title(f"Flow Magnitude Heatmap (threshold: {mag_threshold} px)", 
-                           fontsize=14, fontweight='bold')
-            ax_mag.set_xlabel("Width (pixels)", fontsize=11)
-            ax_mag.set_ylabel("Height (pixels)", fontsize=11)
-            
-            cbar_mag = plt.colorbar(im_mag, ax=ax_mag, label="Average Flow Magnitude (pixels)", 
-                                   fraction=0.046, pad=0.04)
-            ax_mag.grid(True, alpha=0.2, linestyle='--', linewidth=0.5)
-            
-            # Statistics
-            valid_mags = mag_vis[valid_mask]
-            pct_low_mag = (valid_mags < mag_threshold).float().mean() * 100
-            mag_stats = f"Magnitude range: {valid_mags.min():.4f} - {valid_mags.max():.4f}\n"
-            mag_stats += f"Mean: {valid_mags.mean():.4f} | Median: {valid_mags.median():.4f}\n"
-            mag_stats += f"% below {mag_threshold}: {pct_low_mag:.1f}%"
-            ax_mag.text(0.02, 0.98, mag_stats, transform=ax_mag.transAxes, fontsize=9,
-                       verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-            
-            mag_path = save_path.replace('_error.png', '_magnitude.png') if '_error' in save_path else f"{save_path.replace('.png', '')}_magnitude.png"
-            plt.savefig(mag_path, dpi=150, bbox_inches='tight')
-            print(f"Magnitude heatmap saved to {mag_path}")
-            plt.close(fig_mag)
-        
-        # === COMBINED SIDE-BY-SIDE VISUALIZATION ===
-        if save_combined and averaged_magnitude is not None:
-            fig_combined, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 10))
-            
-            # Left: Error heatmap
-            im1 = ax1.imshow(error_np, cmap=cmap, aspect='auto')
-            ax1.set_title(f"{title}", fontsize=13, fontweight='bold')
-            ax1.set_xlabel("Width (pixels)", fontsize=10)
-            ax1.set_ylabel("Height (pixels)", fontsize=10)
-            plt.colorbar(im1, ax=ax1, label="Average Error", fraction=0.046, pad=0.04)
-            ax1.grid(True, alpha=0.2, linestyle='--', linewidth=0.5)
-            
-            # Right: Magnitude heatmap (simple, no overlay or contours)
-            im2 = ax2.imshow(mag_np, cmap='viridis', aspect='auto')
-            ax2.set_title("Average Flow Magnitude", fontsize=13, fontweight='bold')
-            ax2.set_xlabel("Width (pixels)", fontsize=10)
-            ax2.set_ylabel("Height (pixels)", fontsize=10)
-            plt.colorbar(im2, ax=ax2, label="Flow Magnitude (pixels)", fraction=0.046, pad=0.04)
-            ax2.grid(True, alpha=0.2, linestyle='--', linewidth=0.5)
-            
-            # Add statistics text box on magnitude map
-            valid_mags = mag_vis[valid_mask]
-            mag_stats = f"Range: {valid_mags.min():.2f} - {valid_mags.max():.2f} px\n"
-            mag_stats += f"Mean: {valid_mags.mean():.2f} | Median: {valid_mags.median():.2f}"
-            ax2.text(0.02, 0.98, mag_stats, transform=ax2.transAxes, fontsize=9,
-                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-            
-            fig_combined.suptitle(f"Error Analysis with Magnitude Context", fontsize=15, fontweight='bold', y=0.98)
-            
-            combined_path = save_path.replace('_error.png', '_combined.png') if '_error' in save_path else f"{save_path.replace('.png', '')}_combined.png"
-            plt.savefig(combined_path, dpi=150, bbox_inches='tight')
-            print(f"Combined visualization saved to {combined_path}")
-            plt.close(fig_combined)
-        
+        # Save figure
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Heatmap saved to {save_path}")
         print(f"  Error range: {valid_errors.min():.4f} - {valid_errors.max():.4f} (95th %ile: {p95:.4f})")
-        if averaged_magnitude is not None:
-            valid_mags = mag_vis[valid_mask]
-            pct_low = (valid_mags < mag_threshold).float().mean() * 100
-            print(f"  Magnitude: {valid_mags.mean():.4f} avg, {pct_low:.1f}% below {mag_threshold} px")
+        plt.close(fig)
         
         return True
 
@@ -716,7 +581,6 @@ class BaseValidationLoss(torch.nn.Module):
         """
         self._aggregated_error_map = None
         self._aggregated_mask_map = None
-        self._aggregated_magnitude_map = None
 
 
 class AEE(BaseValidationLoss):
@@ -751,9 +615,9 @@ class AEE(BaseValidationLoss):
         gtflow_mask = gtflow_mask_x * gtflow_mask_y
         gtflow_mask = ~gtflow_mask
 
-        # Store full error heatmap with magnitude (before final masking for averaging)
+        # Store full error heatmap (before final masking for averaging)
         full_mask = (event_mask * gtflow_mask).float()
-        self.accumulate_error_heatmap(error, full_mask, flow_mag)
+        self.accumulate_error_heatmap(error, full_mask)
 
         # mask AEE and flow
         mask = event_mask * gtflow_mask
@@ -864,12 +728,9 @@ class AAE(BaseValidationLoss):
         # Apply masks
         mask = event_mask & gtflow_mask
         
-        # Compute flow magnitude for visualization
-        flow_magnitude = flow_norm.squeeze(1)  # [B, H, W]
-        
-        # Accumulate full error heatmap with magnitude (before final masking for averaging)
+        # Accumulate full error heatmap (before final masking for averaging)
         full_mask = mask.float()
-        self.accumulate_error_heatmap(error, full_mask, flow_magnitude)
+        self.accumulate_error_heatmap(error, full_mask)
         
         mask = mask.view(flow.shape[0], -1)
         error = error.view(flow.shape[0], -1)
@@ -1006,7 +867,7 @@ class AE_ofMeans(BaseValidationLoss):
             AE_ofMeans = AE_ofMeans.unsqueeze(0)
 
         return AE_ofMeans
-
+    
 class AAE_Weighted(BaseValidationLoss):
     """Magnitude-weighted angular error"""
 

@@ -67,11 +67,6 @@ def get_interpolation(events, flow, tref, res, flow_scaling, round_idx=False):
     # make unfeasible weights zero
     weights = torch.prod(weights, dim=-1, keepdim=True) * mask  # bilinear interpolation
 
-    # Clamp indices to valid range BEFORE flattening
-    # Even with zero weights, scatter_add requires valid indices
-    idx[:, :, 0:1] = torch.clamp(idx[:, :, 0:1], 0, res[0] - 1)
-    idx[:, :, 1:2] = torch.clamp(idx[:, :, 1:2], 0, res[1] - 1)
-
     # prepare indices
     idx[:, :, 0] *= res[1]  # torch.view is row-major
     idx = torch.sum(idx, dim=2, keepdim=True)
@@ -91,11 +86,6 @@ def interpolate(idx, weights, res, polarity_mask=None):
 
     if polarity_mask is not None:
         weights = weights * polarity_mask
-    
-    # Final safety check: clamp indices to valid range
-    max_idx = res[0] * res[1] - 1
-    idx = torch.clamp(idx, 0, max_idx)
-    
     iwe = torch.zeros((idx.shape[0], res[0] * res[1], 1)).to(idx.device)
     iwe = iwe.scatter_add_(1, idx.long(), weights)
     iwe = iwe.view((idx.shape[0], 1, res[0], res[1]))

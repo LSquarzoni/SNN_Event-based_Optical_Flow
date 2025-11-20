@@ -1,13 +1,16 @@
 import argparse
 import os
 import shutil
+import gc
 
 import mlflow
 import torch
 from torch.optim import *
 from brevitas import config as cf
-from brevitas.graph.calibrate import calibration_mode
 from brevitas.export import export_onnx_qcdq
+
+# CRITICAL: Enable expandable segments to avoid memory fragmentation
+os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
@@ -56,111 +59,66 @@ def save_quantized_model(model, path, epoch=None, optimizer=None, loss=None, add
     # Extract quantization parameters from the model
     quant_params = {}
     for name, module in model.named_modules():
-        # Store Brevitas quantization parameters
-        if hasattr(module, 'quant_weight'):
+        # Store Brevitas quantization parameters for convolutions
+        if hasattr(module, 'weight_quant') and hasattr(module.weight_quant, 'scale'):
             quant_params[f'{name}.weight_quant'] = {
-                'bit_width': module.quant_weight.bit_width() if hasattr(module.quant_weight, 'bit_width') else None,
-                'scale': module.quant_weight.scale() if hasattr(module.quant_weight, 'scale') else None,
-                'zero_point': module.quant_weight.zero_point() if hasattr(module.quant_weight, 'zero_point') else None,
+                'bit_width': module.weight_quant.bit_width() if hasattr(module.weight_quant, 'bit_width') else None,
+                'scale': module.weight_quant.scale().detach().cpu() if hasattr(module.weight_quant, 'scale') else None,
+                'zero_point': module.weight_quant.zero_point().detach().cpu() if hasattr(module.weight_quant, 'zero_point') else None,
             }
-        if hasattr(module, 'quant_act'):
-            quant_params[f'{name}.act_quant'] = {
-                'bit_width': module.quant_act.bit_width() if hasattr(module.quant_act, 'bit_width') else None,
-                'scale': module.quant_act.scale() if hasattr(module.quant_act, 'scale') else None,
-                'zero_point': module.quant_act.zero_point() if hasattr(module.quant_act, 'zero_point') else None,
+        if hasattr(module, 'input_quant') and hasattr(module.input_quant, 'scale'):
+            quant_params[f'{name}.input_quant'] = {
+                'bit_width': module.input_quant.bit_width() if hasattr(module.input_quant, 'bit_width') else None,
+                'scale': module.input_quant.scale().detach().cpu() if hasattr(module.input_quant, 'scale') else None,
+                'zero_point': module.input_quant.zero_point().detach().cpu() if hasattr(module.input_quant, 'zero_point') else None,
             }
-        # Store learnable LIF parameters (leak, threshold)
+        if hasattr(module, 'output_quant') and hasattr(module.output_quant, 'scale'):
+            quant_params[f'{name}.output_quant'] = {
+                'bit_width': module.output_quant.bit_width() if hasattr(module.output_quant, 'bit_width') else None,
+                'scale': module.output_quant.scale().detach().cpu() if hasattr(module.output_quant, 'scale') else None,
+                'zero_point': module.output_quant.zero_point().detach().cpu() if hasattr(module.output_quant, 'zero_point') else None,
+            }
+        
+        # Store LIF quantization parameters (for Full QAT mode)
+        if hasattr(module, 'q_lif') and not isinstance(module.q_lif, torch.nn.Identity):
+            # This is a quantized LIF state quantizer (Full QAT)
+            if hasattr(module.q_lif, 'scale'):
+                quant_params[f'{name}.q_lif'] = {
+                    'bit_width': module.q_lif.bit_width if hasattr(module.q_lif, 'bit_width') else 8,
+                    'scale': module.q_lif.scale.detach().cpu() if hasattr(module.q_lif, 'scale') else None,
+                    'zero_point': module.q_lif.zero_point.detach().cpu() if hasattr(module.q_lif, 'zero_point') else None,
+                }
+        
+        # Store learnable LIF parameters (beta, threshold) - always present
         if hasattr(module, 'beta'):
-            quant_params[f'{name}.beta'] = module.beta.data.clone()
+            quant_params[f'{name}.beta'] = module.beta.data.detach().cpu().clone()
         if hasattr(module, 'threshold'):
-            quant_params[f'{name}.threshold'] = module.threshold.data.clone()
+            quant_params[f'{name}.threshold'] = module.threshold.data.detach().cpu().clone()
     
     checkpoint['quantization_params'] = quant_params
     
     # Save checkpoint
     torch.save(checkpoint, path)
-    print(f"Quantized model saved to {path}")
+    print(f"✓ Quantized model saved to {path}")
     
     # Also save a separate file with just quantization metadata for easy inspection
     metadata_path = path.replace('.pth', '_quant_metadata.pth')
     torch.save({'quantization_params': quant_params}, metadata_path)
-    print(f"Quantization metadata saved to {metadata_path}")
-
-
-def load_quantized_model(model, path, device, load_optimizer=False, optimizer=None):
-    """
-    Load quantized model with all quantization metadata.
-    
-    Args:
-        model: The model instance to load weights into
-        path: Path to the saved checkpoint
-        device: Device to load the model on
-        load_optimizer: Whether to load optimizer state
-        optimizer: Optimizer instance (required if load_optimizer=True)
-    
-    Returns:
-        model: Loaded model
-        checkpoint: Full checkpoint dictionary with metadata
-    """
-    if not os.path.isfile(path):
-        print(f"No quantized model found at {path}")
-        return model, None
-    
-    checkpoint = torch.load(path, map_location=device, weights_only=False)
-    
-    # Load model state
-    if 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-        print(f"Quantized model loaded from {path}")
-    else:
-        print("Warning: 'model_state_dict' not found in checkpoint")
-    
-    # Load optimizer state if requested
-    if load_optimizer and optimizer is not None and 'optimizer_state_dict' in checkpoint:
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        print("Optimizer state loaded")
-    
-    # Print quantization info
-    if 'quantization_params' in checkpoint:
-        print(f"Loaded quantization metadata for {len(checkpoint['quantization_params'])} parameters")
-    
-    return model, checkpoint
-
-
-def calibrate_model(calibration_loader, model, device, num_batches=50):
-    """
-    Calibrate the quantized model to initialize quantization parameters.
-    This should be called before QAT training begins.
-    """
-    print("Starting model calibration...")
-    model = model.to(device)
-    model.eval()
-    
-    with torch.no_grad():
-        with calibration_mode(model):
-            batch_count = 0
-            for inputs in calibration_loader:
-                if batch_count >= num_batches:
-                    break
-                    
-                event_voxel = inputs["event_voxel"].to(device)
-                event_cnt = inputs["event_cnt"].to(device)
-                
-                model.reset_states()
-                model(event_voxel, event_cnt)
-                
-                batch_count += 1
-                if batch_count % 10 == 0:
-                    print(f'Calibration: {batch_count}/{num_batches} batches')
-    
-    print("Calibration completed!")
-    return model
-
+    print(f"✓ Quantization metadata saved to {metadata_path}")
 
 def train_qat(args, config_parser):
     """
     Quantization Aware Training (QAT) for SNN models.
-    This function trains a model with quantization enabled and saves all quantization metadata.
+    
+    Supports two QAT modes:
+    1. Full QAT: Quantize both convolutions and LIF layers during training
+       - Config: quantization.Conv_only = False
+       - Saves model with all quantization metadata (weights, activations, LIF parameters)
+       
+    2. Conv-only QAT: Quantize only convolutions, keep LIF at FP32 during training
+       - Config: quantization.Conv_only = True
+       - LIF quantization can be added later at evaluation time via calibration
+       - Saves model with convolution quantization metadata only
     """
     mlflow.set_tracking_uri(args.path_mlflow)
 
@@ -181,7 +139,11 @@ def train_qat(args, config_parser):
     mlflow.log_params(config)
     mlflow.log_param("prev_runid", args.prev_runid)
     mlflow.log_param("training_type", "QAT")
-    mlflow.log_param("calibration_batches", args.calibration_batches)
+    
+    # Determine QAT mode
+    conv_only = config["model"].get("quantization", {}).get("Conv_only", False)
+    mlflow.log_param("qat_mode", "Conv_only" if conv_only else "Full")
+    
     config = config_parser.combine_entries(config)
     mlflow.pytorch.autolog()
     print("MLflow dir:", mlflow.active_run().info.artifact_uri[:-9])
@@ -215,55 +177,50 @@ def train_qat(args, config_parser):
     print(f"Initializing quantized model: {config['model']['name']}")
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
     
-    # CRITICAL: Disable state quantization during training to save VRAM and improve stability
-    # State quantization will be calibrated during evaluation
-    print("\nDisabling state quantization during training (will be calibrated at evaluation)...")
-    state_quantizers_disabled = 0
-    for name, module in model.named_modules():
-        if hasattr(module, 'q_lif'):
-            # Replace state quantizer with identity function
-            module.q_lif = torch.nn.Identity()
-            state_quantizers_disabled += 1
-    if state_quantizers_disabled > 0:
-        print(f"Disabled {state_quantizers_disabled} state quantizers to save VRAM")
-        print("Note: Weights, activations, beta, threshold are still quantized (QAT)")
-        print("      States will be calibrated during evaluation with --calibration_batches")
+    print("\n" + "="*80)
+    if conv_only:
+        print("QAT MODE: Convolution-Only Quantization")
+        print("-" * 80)
+        print("Training with:")
+        print("  ✓ Convolutions: INT8 quantized (weights + activations)")
+        print("  ✓ LIF parameters (beta, threshold): FP32 trainable")
+        print("  ✓ LIF states (membrane): FP32")
+        print("-" * 80)
+        print("At evaluation time, you can:")
+        print("  • Keep LIF at FP32 for mixed precision (best accuracy)")
+        print("  • Add LIF quantization via calibration (smaller model)")
+    else:
+        print("QAT MODE: Full Quantization (Convolutions + LIF)")
+        print("-" * 80)
+        print("Training with:")
+        print("  ✓ Convolutions: INT8 quantized (weights + activations)")
+        print("  ✓ LIF parameters (beta, threshold): INT8 quantized")
+        print("  ✓ LIF states (membrane): INT8 quantized")
+        print("-" * 80)
+        print("At evaluation: Model is fully quantized, no calibration needed")
+    print("="*80)
     
-    # Load pre-trained model if provided
+    # Load pre-trained FP32 model if provided (for transfer learning)
     if args.prev_runid:
-        if args.load_quantized:
-            # Load from a previous QAT checkpoint
-            model_dir = f"mlruns/0/models/{args.prev_runid}/model_quant.pth"
-            model, checkpoint = load_quantized_model(model, model_dir, device)
-        else:
-            # Load from a standard checkpoint (FP32)
-            model = load_model(args.prev_runid, model, device)
-            print("Loaded FP32 model. Will perform calibration before QAT training.")
-    
-    # Calibrate the model if starting from FP32 or if explicitly requested
-    if args.calibrate or (args.prev_runid and not args.load_quantized):
-        model = calibrate_model(dataloader, model, device, num_batches=args.calibration_batches)
+        print(f"\nLoading FP32 pre-trained model from run: {args.prev_runid}")
+        model = load_model(args.prev_runid, model, device)
+        print("✓ FP32 weights loaded - will train with quantization from these weights")
     
     model.train()
 
     # optimizer
     optimizer = eval(config["optimizer"]["name"])(model.parameters(), lr=config["optimizer"]["lr"])
-    
-    # Load optimizer state if resuming from QAT checkpoint
-    if args.prev_runid and args.load_quantized:
-        model_dir = f"mlruns/0/models/{args.prev_runid}/model_quant.pth"
-        if os.path.exists(model_dir):
-            checkpoint = torch.load(model_dir, map_location=device, weights_only=False)
-            if 'optimizer_state_dict' in checkpoint:
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-                print("Loaded optimizer state from checkpoint")
-    
     optimizer.zero_grad()
 
-    # Create model save directory
+    # Create model save directory based on QAT mode
     run_id = mlflow.active_run().info.run_id
-    model_save_dir = f"mlruns/0/models/LIFFN_int8"
+    if conv_only:
+        model_save_dir = f"mlruns/0/models/LIFFN_ConvOnly_QAT"
+    else:
+        model_save_dir = f"mlruns/0/models/LIFFN_Full_QAT"
     os.makedirs(model_save_dir, exist_ok=True)
+    
+    print(f"\nModel checkpoints will be saved to: {model_save_dir}")
 
     # simulation variables
     patience = 50
@@ -284,6 +241,9 @@ def train_qat(args, config_parser):
                 loss_function.reset()
                 model.reset_states()
                 optimizer.zero_grad()
+                
+                # Empty cache at sequence boundaries
+                torch.cuda.empty_cache()
 
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
@@ -380,7 +340,7 @@ def train_qat(args, config_parser):
 
                 # update number of loss samples seen by the network
                 data.samples += config["loader"]["batch_size"]
-
+                
                 loss.backward()
 
                 # clip and save grads
@@ -390,10 +350,14 @@ def train_qat(args, config_parser):
                     grads_w.append(get_grads(model.named_parameters()))
 
                 optimizer.step()
-                optimizer.zero_grad()
 
                 model.detach_states()
+                
                 loss_function.reset()
+                
+                # Periodic garbage collection to free fragmented memory
+                if data.seq_num % 50 == 0:
+                    torch.cuda.empty_cache()
 
             # print training info
             if config["vis"]["verbose"]:
@@ -411,6 +375,12 @@ def train_qat(args, config_parser):
             # store gradients
             if config["vis"]["store_grads"]:
                 grads_w.append(get_grads(model))
+
+            """ # Print memory usage and sequence info every 10 sequences
+            if data.seq_num % 10 == 0:
+                print(f"\nMemory allocated: {torch.cuda.memory_allocated(device) / 1e9:.2f} GB")
+                print(f"Memory reserved: {torch.cuda.memory_reserved(device) / 1e9:.2f} GB")
+                print(f"Sequence: {data.seq_num}, Events in loss: {loss_function.num_events}") """
 
         if end_train:
             break
@@ -439,23 +409,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prev_runid",
         default="",
-        help="pre-trained model to use as starting point",
-    )
-    parser.add_argument(
-        "--load_quantized",
-        action="store_true",
-        help="load from a quantized checkpoint (otherwise loads FP32)",
-    )
-    parser.add_argument(
-        "--calibrate",
-        action="store_true",
-        help="perform calibration before training (automatically done when loading FP32)",
-    )
-    parser.add_argument(
-        "--calibration_batches",
-        type=int,
-        default=50,
-        help="number of batches to use for calibration",
+        help="Optional: FP32 pre-trained model run ID to use as starting point for transfer learning",
     )
     args = parser.parse_args()
 
