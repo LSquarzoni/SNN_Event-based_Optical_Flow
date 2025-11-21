@@ -8,7 +8,7 @@ from torch.optim import *
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import EventWarping, AEE, AAE
+from loss.flow import EventWarping
 from models.model import (
     FireNet,
     FireNet_short,
@@ -30,94 +30,6 @@ def get_next_model_folder(base_path="mlruns/0/models/"):
     while os.path.exists(os.path.join(base_path, str(index))):
         index += 1
     return os.path.join(base_path, str(index))
-
-def create_validation_loader(train_config, validation_config_path):
-    """Create validation dataloader for MVSEC dataset"""
-    if not validation_config_path or not os.path.exists(validation_config_path):
-        print(f"Validation config not found: {validation_config_path}")
-        return None, None, None, None
-        
-    try:
-        val_config_parser = YAMLParser(validation_config_path)
-        val_config = val_config_parser.config
-        
-        # Keep validation config completely separate
-        # Only copy model settings needed for dataloader compatibility
-        val_config["model"] = {
-            "num_bins": train_config["model"]["num_bins"],
-            "round_encoding": train_config["model"].get("round_encoding", False)
-        }
-        
-        # Create validation dataloader with pure validation config
-        val_data = H5Loader(val_config, val_config["model"]["num_bins"], val_config["model"]["round_encoding"])
-        val_dataloader = torch.utils.data.DataLoader(
-            val_data,
-            drop_last=True,
-            batch_size=val_config["loader"]["batch_size"],
-            collate_fn=val_data.custom_collate,
-            shuffle=False,
-            **val_config_parser.loader_kwargs,
-        )
-        
-        # Create validation metrics
-        val_metrics = {
-            "AEE": AEE(val_config, val_config_parser.device, flow_scaling=val_config["metrics"]["flow_scaling"]),
-            "AAE": AAE(val_config, val_config_parser.device, flow_scaling=val_config["metrics"]["flow_scaling"])
-        }
-        
-        return val_dataloader, val_data, val_metrics, val_config
-    except Exception as e:
-        print(f"Warning: Could not create validation loader: {e}")
-        return None, None, None, None
-
-def validate_model(model, val_dataloader, val_data, val_metrics, val_config, device):
-    """Run validation on MVSEC dataset"""
-    model.eval()
-    val_results = {"AEE": 0.0, "AAE": 0.0}
-    val_counts = {"AEE": 0, "AAE": 0}
-    
-    with torch.no_grad():
-        val_data.seq_num = 0
-        val_data.samples = 0
-        
-        for inputs in val_dataloader:
-            if val_data.new_seq:
-                val_data.new_seq = False
-                model.reset_states()
-                # Reset metrics
-                for metric in val_metrics.values():
-                    metric.reset()
-            
-            if val_data.seq_num >= len(val_data.files):
-                break
-                
-            # Forward pass
-            x = model(inputs["event_voxel"].to(device), inputs["event_cnt"].to(device))
-            
-            # Compute validation metrics
-            for metric_name, metric in val_metrics.items():
-                metric.event_flow_association(x["flow"], inputs)
-                
-                if metric.num_events > 0:
-                    result = metric()
-                    # Handle tuple returns (error, percentage_outliers)
-                    if isinstance(result, tuple):
-                        error = result[0]  # Take the first element (main error)
-                    else:
-                        error = result
-                    val_results[metric_name] += error.item()
-                    val_counts[metric_name] += 1
-    
-    # Compute average validation errors
-    avg_val_results = {}
-    for metric_name in val_results:
-        if val_counts[metric_name] > 0:
-            avg_val_results[metric_name] = val_results[metric_name] / val_counts[metric_name]
-        else:
-            avg_val_results[metric_name] = float('inf')
-    
-    model.train()  # Switch back to training mode
-    return avg_val_results
 
 def train(args, config_parser):
     mlflow.set_tracking_uri(args.path_mlflow)
@@ -159,11 +71,6 @@ def train(args, config_parser):
         **kwargs,
     )
 
-    # Create validation dataloader
-    # val_dataloader, val_data, val_metrics, val_config = create_validation_loader(config, args.val_config)
-    val_dataloader = None
-    validation_enabled = val_dataloader is not None
-
     # loss function
     loss_function = EventWarping(config, device)
     
@@ -185,7 +92,6 @@ def train(args, config_parser):
     epochs_without_improvement = 0
     train_loss = 0
     best_loss = 1.0e6
-    best_val_aee = 1.0e6  # Track best validation AEE
     end_train = False
     grads_w = []
     checkpoint_counter = 0  # Counter for checkpoint folders
@@ -207,33 +113,15 @@ def train(args, config_parser):
                 avg_train_loss = train_loss / (data.samples + 1)
                 mlflow.log_metric("loss", avg_train_loss, step=data.epoch)
 
-                # Run validation if enabled
-                val_results = {}
-                if validation_enabled:
-                    print(f"\nRunning validation at epoch {data.epoch}...")
-                    val_results = validate_model(model, val_dataloader, val_data, val_metrics, val_config, device)
-                    
-                    # Log validation metrics
-                    for metric_name, value in val_results.items():
-                        mlflow.log_metric(f"val_{metric_name}", value, step=data.epoch)
-                
-                # Print epoch summary with both training loss and validation results
-                if validation_enabled and val_results:
-                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AEE: {val_results.get('AEE', 'N/A'):.4f}, Validation AAE: {val_results.get('AAE', 'N/A'):.4f}")
-                else:
-                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
+                # Print epoch summary
+                print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
 
                 with torch.no_grad():
-                    # Use combined metric for model selection if validation is enabled
-                    if validation_enabled and val_results:
-                        # Weighted sum (equal weights here, adjust as needed)
-                        current_metric = 0.5 * val_results.get('AEE', avg_train_loss) + 0.5 * val_results.get('AAE', avg_train_loss)
-                        best_metric = 0.5 * best_val_aee + 0.5 * best_val_aae if ('best_val_aae' in locals()) else float('inf')
-                    else:
-                        current_metric = avg_train_loss
-                        best_metric = best_loss
+                    # Use training loss for model selection
+                    current_metric = avg_train_loss
+                    best_metric = best_loss
 
-                    # Save model if combined metric improves
+                    # Save model if metric improves
                     if current_metric < best_metric - 1e-6:
                         # Delete previous checkpoint folder if it exists
                         if last_checkpoint_path is not None and os.path.exists(last_checkpoint_path):
@@ -263,8 +151,6 @@ def train(args, config_parser):
                             'loss': avg_train_loss,
                             'config': config
                         }
-                        if validation_enabled:
-                            save_data['validation_results'] = val_results
 
                         model_pth_path = os.path.join(model_save_path, 'model.pth')
                         try:
@@ -289,11 +175,7 @@ def train(args, config_parser):
                             os.system(f"df -h {base_model_path}")
                             raise
 
-                        if validation_enabled and val_results:
-                            best_val_aee = val_results.get('AEE', best_val_aee)
-                            best_val_ae = val_results.get('AE', float('inf'))
-                        else:
-                            best_loss = current_metric
+                        best_loss = current_metric
                         epochs_without_improvement = 0
                     else:
                         epochs_without_improvement += 1
@@ -388,11 +270,6 @@ if __name__ == "__main__":
         "--config",
         default="configs/train_SNN.yml",
         help="training configuration",
-    )
-    parser.add_argument(
-        "--val_config",
-        default="configs/validation_config.yml",
-        help="validation configuration (optional)",
     )
     parser.add_argument(
         "--path_mlflow",

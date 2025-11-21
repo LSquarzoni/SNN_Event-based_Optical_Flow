@@ -21,10 +21,10 @@ model:
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         type: int8 # int8 or int16
         PTQ: False 
-        Conv_only: True
+        Conv_only: False
 
 spiking_neuron:
     leak: [0.0, 1.0]
@@ -44,7 +44,7 @@ optimizer:
 
 loader:
     n_epochs: 100
-    batch_size: 4
+    batch_size: 8
     resolution: [128, 128] # H x W
     std_resolution: [128, 128]
     augment: ["Horizontal", "Vertical", "Polarity"]

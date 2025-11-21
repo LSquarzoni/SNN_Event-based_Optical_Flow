@@ -57,26 +57,34 @@ def save_quantized_model(model, path, epoch=None, optimizer=None, loss=None, add
         checkpoint.update(additional_info)
     
     # Extract quantization parameters from the model
+    # Helper function to safely extract quantizer parameters
+    def safe_get_quant_param(quant_module, param_name):
+        """Safely get quantizer parameter, handling None returns"""
+        if hasattr(quant_module, param_name):
+            param = getattr(quant_module, param_name)()
+            return param.detach().cpu() if param is not None else None
+        return None
+    
     quant_params = {}
     for name, module in model.named_modules():
         # Store Brevitas quantization parameters for convolutions
         if hasattr(module, 'weight_quant') and hasattr(module.weight_quant, 'scale'):
             quant_params[f'{name}.weight_quant'] = {
-                'bit_width': module.weight_quant.bit_width() if hasattr(module.weight_quant, 'bit_width') else None,
-                'scale': module.weight_quant.scale().detach().cpu() if hasattr(module.weight_quant, 'scale') else None,
-                'zero_point': module.weight_quant.zero_point().detach().cpu() if hasattr(module.weight_quant, 'zero_point') else None,
+                'bit_width': safe_get_quant_param(module.weight_quant, 'bit_width'),
+                'scale': safe_get_quant_param(module.weight_quant, 'scale'),
+                'zero_point': safe_get_quant_param(module.weight_quant, 'zero_point'),
             }
         if hasattr(module, 'input_quant') and hasattr(module.input_quant, 'scale'):
             quant_params[f'{name}.input_quant'] = {
-                'bit_width': module.input_quant.bit_width() if hasattr(module.input_quant, 'bit_width') else None,
-                'scale': module.input_quant.scale().detach().cpu() if hasattr(module.input_quant, 'scale') else None,
-                'zero_point': module.input_quant.zero_point().detach().cpu() if hasattr(module.input_quant, 'zero_point') else None,
+                'bit_width': safe_get_quant_param(module.input_quant, 'bit_width'),
+                'scale': safe_get_quant_param(module.input_quant, 'scale'),
+                'zero_point': safe_get_quant_param(module.input_quant, 'zero_point'),
             }
         if hasattr(module, 'output_quant') and hasattr(module.output_quant, 'scale'):
             quant_params[f'{name}.output_quant'] = {
-                'bit_width': module.output_quant.bit_width() if hasattr(module.output_quant, 'bit_width') else None,
-                'scale': module.output_quant.scale().detach().cpu() if hasattr(module.output_quant, 'scale') else None,
-                'zero_point': module.output_quant.zero_point().detach().cpu() if hasattr(module.output_quant, 'zero_point') else None,
+                'bit_width': safe_get_quant_param(module.output_quant, 'bit_width'),
+                'scale': safe_get_quant_param(module.output_quant, 'scale'),
+                'zero_point': safe_get_quant_param(module.output_quant, 'zero_point'),
             }
         
         # Store LIF quantization parameters (for Full QAT mode)
@@ -350,6 +358,7 @@ def train_qat(args, config_parser):
                     grads_w.append(get_grads(model.named_parameters()))
 
                 optimizer.step()
+                optimizer.zero_grad()
 
                 model.detach_states()
                 
