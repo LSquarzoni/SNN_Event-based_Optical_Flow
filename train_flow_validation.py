@@ -35,7 +35,15 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
     """
     Run validation on the first sequence of the MVSEC dataset.
     Returns the average AAE across the sequence.
+    
+    This function saves and restores the model's internal states to avoid
+    disrupting the temporal continuity during training.
     """
+    # Save the current training states before validation
+    saved_states = None
+    if hasattr(model, '_states') and model._states is not None:
+        saved_states = [state.clone() if state is not None else None for state in model._states]
+    
     model.eval()
     
     # Create validation dataloader
@@ -61,6 +69,9 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
         
         if verbose:
             print("  Starting validation on first MVSEC sequence...")
+        
+        # Reset states for validation (different resolution)
+        model.reset_states()
         
         for inputs in val_dataloader:
             # Handle new sequence
@@ -95,6 +106,13 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
     
     if verbose:
         print(f"  Validation complete: AAE = {avg_aae:.4f} (from {aae_count} samples)")
+    
+    # Restore the saved training states
+    if saved_states is not None and hasattr(model, '_states'):
+        model._states = saved_states
+    else:
+        # If no states were saved, reset to ensure clean state
+        model.reset_states()
     
     model.train()  # Switch back to training mode
     return avg_aae

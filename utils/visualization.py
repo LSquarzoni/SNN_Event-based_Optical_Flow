@@ -249,57 +249,6 @@ class Visualization:
                 return
             self.last_store_ts = ts
 
-        # Special handling for 8x8_vec store type: create single video with dual-arrow visualization
-        if self.store_type == "8x8_vec":
-            path_to = self.store_dir + sequence + "/"
-            if not os.path.exists(path_to):
-                # Close any active video writers from previous sequence
-                if self.video_writers:
-                    for _w in self.video_writers.values():
-                        try:
-                            _w.release()
-                        except Exception:
-                            pass
-                    self.video_writers.clear()
-                
-                os.makedirs(path_to)
-                if self.store_file is not None:
-                    self.store_file.close()
-                self.store_file = open(path_to + "timestamps.txt", "w")
-                self.img_idx = 0
-                self.last_store_ts = None
-            
-            # Extract flow and gtflow numpy arrays
-            if flow is not None and gtflow is not None:
-                flow = flow.detach()
-                flow_h, flow_w = flow.shape[2], flow.shape[3]
-                flow_npy = flow.cpu().numpy().transpose(0, 2, 3, 1).reshape((flow_h, flow_w, 2))
-                # Scale flow from model's internal representation to pixels
-                flow_npy = flow_npy * self.flow_scaling
-                
-                gtflow = gtflow.detach()
-                gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
-                gtflow_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_h, gtflow_w, 2))
-                
-                # Create 256x256 dual-arrow frame
-                dual_arrow_frame = self._draw_dual_arrow_frame(
-                    flow_npy[:, :, 0], flow_npy[:, :, 1],
-                    gtflow_npy[:, :, 0], gtflow_npy[:, :, 1],
-                    frame_size=256,
-                    fixed_length=80
-                )
-                
-                # Write to video
-                if "8x8_vec" not in self.video_writers:
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    fps = 30
-                    shape = (256, 256)
-                    self.video_writers["8x8_vec"] = cv2.VideoWriter(path_to + "flow_vectors.mp4", fourcc, fps, shape)
-                self.video_writers["8x8_vec"].write(dual_arrow_frame)
-            
-            self.img_idx += 1
-            return
-
         # check if new sequence
         path_to = self.store_dir + sequence + "/"
         if not os.path.exists(path_to):
@@ -437,7 +386,7 @@ class Visualization:
                 gt_flow_x=gt_x,
                 gt_flow_y=gt_y,
                 overlay_gt=True if gtflow is not None else False,
-                fixed_length=70,
+                fixed_length=(0.45 * max(masked_h, masked_w)),
             )
             if self.store_type == "image":
                 filename = path_to + "masked_flow_vec/%09d.png" % self.img_idx
@@ -478,7 +427,6 @@ class Visualization:
         # Create stitched output (four panels side-by-side). If any panel is missing, replace it with a black placeholder.
         # Order: input events → ground truth → masked flow (gradient) → masked flow (vectors with dual arrows)
         frames_to_stitch = [events_frame, gtflow_frame, masked_grad_frame, masked_vec_frame]
-        frame_labels = ["Input events", "Ground truth", "Masked flow", "gt (white) vs. flow (color)"]
         
         if any(f is not None for f in frames_to_stitch):
             # compute target heights/widths
@@ -500,26 +448,6 @@ class Visualization:
                         pad[y : y + h, :w] = f
                     else:
                         pad = f.copy()
-                
-                # Add text label at the top of each panel
-                font = cv2.FONT_HERSHEY_SIMPLEX
-                font_scale = 0.5
-                thickness = 1
-                text_color = (255, 255, 255)  # white text
-                text = frame_labels[idx]
-                
-                # Get text size for background rectangle
-                text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
-                text_x = 5
-                text_y = 20
-                
-                # Draw black background rectangle for better readability
-                cv2.rectangle(pad, (text_x - 2, text_y - text_size[1] - 2),
-                            (text_x + text_size[0] + 2, text_y + 2),
-                            (0, 0, 0), -1)
-                
-                # Draw text
-                cv2.putText(pad, text, (text_x, text_y), font, font_scale, text_color, thickness)
                 
                 padded.append(pad)
 
@@ -567,114 +495,6 @@ class Visualization:
             return np.zeros_like(img, dtype=np.uint8)
         scaled = (img.astype(np.float32) * f).clip(0, 255).astype(np.uint8)
         return scaled
-
-    @staticmethod
-    def _draw_dual_arrow_frame(flow_x, flow_y, gt_flow_x, gt_flow_y, frame_size=256, fixed_length=80):
-        """
-        Create a single frame showing two centered arrows: GT (white) and predicted (colored).
-        Arrow lengths are proportional to flow magnitudes with power-law scaling for better visibility.
-        Designed for global/small flow outputs (e.g., [B,2,1,1] expanded to [B,2,H,W]).
-        
-        :param flow_x: [H x W] predicted horizontal optical flow component
-        :param flow_y: [H x W] predicted vertical optical flow component
-        :param gt_flow_x: [H x W] ground-truth horizontal optical flow component
-        :param gt_flow_y: [H x W] ground-truth vertical optical flow component
-        :param frame_size: output frame size (e.g., 256x256)
-        :param fixed_length: base arrow length in pixels (scales with magnitude)
-        :return frame_bgr: [frame_size x frame_size x 3] BGR uint8 frame
-        """
-        # Create black canvas
-        img = np.zeros((frame_size, frame_size, 3), dtype=np.uint8)
-        
-        # Compute average predicted flow (across all pixels, or use the constant value)
-        avg_pred_dx = float(np.mean(flow_x))
-        avg_pred_dy = float(np.mean(flow_y))
-        avg_pred_mag = float(np.sqrt(avg_pred_dx ** 2 + avg_pred_dy ** 2))
-        
-        # Compute average GT flow
-        avg_gt_dx = float(np.mean(gt_flow_x))
-        avg_gt_dy = float(np.mean(gt_flow_y))
-        avg_gt_mag = float(np.sqrt(avg_gt_dx ** 2 + avg_gt_dy ** 2))
-        
-        # Combined max magnitude for consistent scaling across both arrows
-        combined_max = max(avg_pred_mag, avg_gt_mag, 1e-6)
-        
-        cx = frame_size // 2
-        cy = frame_size // 2
-        
-        # Maximum drawable length (pixels) -- keep it within frame
-        max_len = int(0.45 * frame_size)
-        
-        # Power-law scaling (exponent 0.6) to compress range while preserving differences
-        # This makes arrows closer but still distinguishable
-        power = 0.6
-        
-        # Draw predicted flow arrow first (white, behind GT)
-        if avg_pred_mag > 0:
-            # Scale arrow length using power-law to compress large magnitude differences
-            normalized_pred = avg_pred_mag / combined_max
-            scaled_pred = np.power(normalized_pred, power)
-            length_px_pred = int(scaled_pred * max_len)
-            
-            # Invert direction for visualization
-            inv_avg_pred_dx = -avg_pred_dx
-            inv_avg_pred_dy = -avg_pred_dy
-            dir_x_pred = inv_avg_pred_dx / avg_pred_mag
-            dir_y_pred = inv_avg_pred_dy / avg_pred_mag
-            end_x_pred = int(cx + dir_x_pred * length_px_pred)
-            end_y_pred = int(cy + dir_y_pred * length_px_pred)
-            cv2.arrowedLine(img, (cx, cy), (end_x_pred, end_y_pred), (255, 255, 255), 3, tipLength=0.3)
-        
-        # Draw GT arrow (colored, on top)
-        if avg_gt_mag > 0:
-            # Scale arrow length using power-law to compress large magnitude differences
-            normalized_gt = avg_gt_mag / combined_max
-            scaled_gt = np.power(normalized_gt, power)
-            length_px_gt = int(scaled_gt * max_len)
-            
-            # Invert direction for visualization
-            inv_avg_gt_dx = -avg_gt_dx
-            inv_avg_gt_dy = -avg_gt_dy
-            dir_x_gt = inv_avg_gt_dx / avg_gt_mag
-            dir_y_gt = inv_avg_gt_dy / avg_gt_mag
-            end_x_gt = int(cx + dir_x_gt * length_px_gt)
-            end_y_gt = int(cy + dir_y_gt * length_px_gt)
-            
-            # Compute color from angle/magnitude using ORIGINAL (non-inverted) direction
-            ang = np.arctan2(avg_gt_dy, avg_gt_dx) + np.pi
-            ang *= 1.0 / np.pi / 2.0
-            v = np.clip(normalized_gt, 0.0, 1.0)
-            hsv = np.array([ang, 1.0, v])
-            rgb = matplotlib.colors.hsv_to_rgb(hsv)
-            arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
-            
-            cv2.arrowedLine(img, (cx, cy), (end_x_gt, end_y_gt), arrow_color, 3, tipLength=0.3)
-        
-        # Add text annotations with flow values
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.6
-        thickness = 1
-        text_color = (255, 255, 255)  # white text
-        
-        # GT flow text on top
-        gt_text = f"GT: ({avg_gt_dx:.2f}, {avg_gt_dy:.2f})"
-        text_size = cv2.getTextSize(gt_text, font, font_scale, thickness)[0]
-        text_pos_gt = (10, 30)
-        cv2.rectangle(img, (text_pos_gt[0] - 5, text_pos_gt[1] - text_size[1] - 5),
-                      (text_pos_gt[0] + text_size[0] + 5, text_pos_gt[1] + 5),
-                      (0, 0, 0), -1)  # black background
-        cv2.putText(img, gt_text, text_pos_gt, font, font_scale, text_color, thickness)
-        
-        # Predicted flow text on bottom
-        pred_text = f"Flow: ({avg_pred_dx:.2f}, {avg_pred_dy:.2f})"
-        text_size = cv2.getTextSize(pred_text, font, font_scale, thickness)[0]
-        text_pos_flow = (10, frame_size - 15)
-        cv2.rectangle(img, (text_pos_flow[0] - 5, text_pos_flow[1] - text_size[1] - 5),
-                      (text_pos_flow[0] + text_size[0] + 5, text_pos_flow[1] + 5),
-                      (0, 0, 0), -1)  # black background
-        cv2.putText(img, pred_text, text_pos_flow, font, font_scale, text_color, thickness)
-        
-        return img
 
     @staticmethod
     def flow_to_image(flow_x, flow_y, uniform_v=None):
@@ -866,6 +686,9 @@ class Visualization:
                 v = (avg_mag - min_mag) / mag_range
             else:
                 v = (avg_mag / max_mag) if max_mag > 0.0 else 0.0
+            # Boost brightness for better visibility (apply power < 1 to brighten, keep saturation high)
+            v = np.power(v, 0.8)  # Square root brightens while preserving relative differences
+            v = np.clip(v * 1.5, 0.0, 1.0)  # Additional 1.5x boost, clamped to valid range
             hsv = np.array([ang, 1.0, v])
             rgb = matplotlib.colors.hsv_to_rgb(hsv)
             # convert to BGR 0-255 ints for OpenCV
@@ -906,6 +729,9 @@ class Visualization:
                     v = (mag - min_mag) / mag_range
                 else:
                     v = (mag / max_mag) if max_mag > 0.0 else 0.0
+                # Boost brightness for better visibility
+                v = np.power(v, 0.8)  # Square root brightens while preserving relative differences
+                v = np.clip(v * 1.5, 0.0, 1.0)  # Additional 1.5x boost, clamped to valid range
                 hsv = np.array([ang, 1.0, v])
                 rgb = matplotlib.colors.hsv_to_rgb(hsv)
                 arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))

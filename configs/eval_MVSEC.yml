@@ -8,10 +8,10 @@ data:
 model:
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         type: int8 # int8 or int16
         PTQ: False # Post Training Quantization enabled or not
-        Conv_only: True
+        Conv_only: False
 
 # To generate non-trained models -----------------------------------------------------------
     name: LIFFireNet # for other models available, see models/model.py

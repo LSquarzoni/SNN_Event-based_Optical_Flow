@@ -171,7 +171,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newOUT/25/model.pth" # runid: bf537ca6bde14f8e91e59590bfc2ca94
     
     # VALIDATED TRAINING:
-    model_path_dir = "mlruns/0/models/LIFFN_validation_loss/" # runid: 3862ce1463d3461883be94a94c7b3eb0
+    #model_path_dir = "mlruns/0/models/LIFFN_validation_loss/" # runid: 5d7ef7db8e1040b7a7b5c065b871efd5
     
     # 256x256 DATASET:
     #model_path_dir = "mlruns/0/models/LIFFN_256x256//model.pth" # runid:
