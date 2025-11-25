@@ -8,7 +8,7 @@ from torch.optim import *
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import EventWarping, AAE
+from loss.flow import EventWarping, AAE, AEE
 from models.model import (
     FireNet,
     FireNet_short,
@@ -33,8 +33,8 @@ def get_next_model_folder(base_path="mlruns/0/models/"):
 
 def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True):
     """
-    Run validation on the first sequence of the MVSEC dataset.
-    Returns the average AAE across the sequence.
+    Run validation on the entire MVSEC validation dataset.
+    Returns the average AAE and AEE across all sequences.
     
     This function saves and restores the model's internal states to avoid
     disrupting the temporal continuity during training.
@@ -62,13 +62,20 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
     
     aae_sum = 0.0
     aae_count = 0
+    num_sequences = len(val_data.files)
+    
+    # Create AEE metric
+    aee_metric = AEE(val_config, device, flow_scaling=val_config["metrics"]["flow_scaling"])
+    
+    aee_sum = 0.0
+    aee_count = 0
     
     with torch.no_grad():
         val_data.seq_num = 0
         val_data.samples = 0
         
         if verbose:
-            print("  Starting validation on first MVSEC sequence...")
+            print(f"  Starting validation on all {num_sequences} MVSEC sequences...")
         
         # Reset states for validation (different resolution)
         model.reset_states()
@@ -79,33 +86,44 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
                 val_data.new_seq = False
                 model.reset_states()
                 aae_metric.reset()
+                aee_metric.reset()
+                if verbose:
+                    print(f"  Processing sequence {val_data.seq_num + 1}/{num_sequences}...")
             
-            # Stop after first sequence
-            if val_data.seq_num >= 1:
+            # Stop after processing all sequences
+            if val_data.seq_num >= num_sequences:
                 break
             
             # Forward pass
             x = model(inputs["event_voxel"].to(device), inputs["event_cnt"].to(device))
             
-            # Compute AAE metric
+            # Compute AAE and AEE metric
             aae_metric.event_flow_association(x["flow"], inputs)
+            aee_metric.event_flow_association(x["flow"], inputs)
             
             if aae_metric.num_events > 0:
-                result = aae_metric()
+                result_aae = aae_metric()
+                result_aee = aee_metric()
                 # Handle tuple returns (error, percentage_outliers)
-                if isinstance(result, tuple):
-                    aae_error = result[0].item()
+                if isinstance(result_aae, tuple):
+                    aae_error = result_aae[0].item()
+                    aee_error = result_aee[0].item()
                 else:
-                    aae_error = result.item()
+                    aae_error = result_aae.item()
+                    aee_error = result_aee.item()
                 
                 aae_sum += aae_error
+                aee_sum += aee_error
                 aae_count += 1
+                aee_count += 1
     
-    # Compute average AAE
+    # Compute average AAE and AEE
     avg_aae = aae_sum / aae_count if aae_count > 0 else float('inf')
+    avg_aee = aee_sum / aee_count if aee_count > 0 else float('inf')
     
     if verbose:
-        print(f"  Validation complete: AAE = {avg_aae:.4f} (from {aae_count} samples)")
+        print(f"  Validation complete: AAE = {avg_aae:.4f} (from {aae_count} samples across {num_sequences} sequences)")
+        print(f"  Validation complete: AEE = {avg_aee:.4f} (from {aee_count} samples across {num_sequences} sequences)")
     
     # Restore the saved training states
     if saved_states is not None and hasattr(model, '_states'):
@@ -115,7 +133,7 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
         model.reset_states()
     
     model.train()  # Switch back to training mode
-    return avg_aae
+    return avg_aae, avg_aee
 
 def train(args, config_parser):
     mlflow.set_tracking_uri(args.path_mlflow)
@@ -186,7 +204,7 @@ def train(args, config_parser):
     
     print(f"Training resolution: {config['loader']['resolution']}")
     print(f"Validation resolution: {val_config['loader']['resolution']}")
-    print(f"Validation will run every {args.val_every_n_epochs} epochs on the first MVSEC sequence\n")
+    print(f"Validation will run every {args.val_every_n_epochs} epochs on all MVSEC sequences\n")
 
     # loss function
     loss_function = EventWarping(config, device)
@@ -206,6 +224,7 @@ def train(args, config_parser):
     train_loss = 0
     best_loss = 1.0e6
     best_val_aae = 1.0e6
+    best_val_aee = 1.0e6
     end_train = False
     grads_w = []
     
@@ -233,17 +252,19 @@ def train(args, config_parser):
 
                 # Run validation every N epochs
                 val_aae = None
+                val_aee = None
                 if data.epoch > 0 and data.epoch % args.val_every_n_epochs == 0:
                     print(f"\n{'='*60}")
                     print(f"Running validation at epoch {data.epoch}...")
                     print(f"{'='*60}")
-                    val_aae = validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True)
+                    val_aae, val_aee = validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True)
                     mlflow.log_metric("val_AAE", val_aae, step=data.epoch)
+                    mlflow.log_metric("val_AEE", val_aee, step=data.epoch)
                     print(f"{'='*60}\n")
 
                 # Print epoch summary
                 if val_aae is not None:
-                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AAE: {val_aae:.4f}")
+                    print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}, Validation AAE: {val_aae:.4f}, Validation AEE: {val_aee:.4f}")
                 else:
                     print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
 
@@ -279,6 +300,8 @@ def train(args, config_parser):
                         }
                         if val_aae is not None:
                             save_data_loss['val_AAE'] = val_aae
+                        if val_aee is not None:
+                            save_data_loss['val_AEE'] = val_aee
 
                         model_pth_path_loss = os.path.join(model_save_path_loss, 'model.pth')
                         try:
@@ -333,6 +356,7 @@ def train(args, config_parser):
                             'epoch': data.epoch,
                             'loss': avg_train_loss,
                             'val_AAE': val_aae,
+                            'val_AEE': val_aee,
                             'config': config
                         }
 
@@ -399,6 +423,11 @@ def train(args, config_parser):
                 data.samples += config["loader"]["batch_size"]
 
                 loss.backward()
+                
+                # Log gradients for all layers with respect to parameters
+                for name, param in model.named_parameters():
+                    if param.grad is not None:
+                        mlflow.log_metric(f"grad_mean_{name}", param.grad.mean().item(), step=data.epoch)
 
                 # clip and save grads
                 if config["loss"]["clip_grad"] is not None:
@@ -438,6 +467,20 @@ def train(args, config_parser):
         if end_train:
             break
 
+        # --- LOGGING OF MODEL PARAMETERS AND GRADIENTS ---
+        # Log only self.lif.beta and self.lif.threshold for all LIF layers and weights for Conv2d layers
+        for module_name, module in model.named_modules():
+            if isinstance(module, torch.nn.Conv2d):
+                mlflow.log_metric(f"conv_weight_mean_{module_name}", module.weight.data.mean().item(), step=data.epoch)
+            if hasattr(module, 'lif'):
+                # lif.beta and lif.threshold should be nn.Parameter with shape [channels, 1, 1]
+                beta = getattr(module.lif, 'beta', None)
+                threshold = getattr(module.lif, 'threshold', None)
+                if beta is not None:
+                    mlflow.log_metric(f"lif_beta_mean_{module_name}", beta.data.mean().item(), step=data.epoch)
+                if threshold is not None:
+                    mlflow.log_metric(f"lif_threshold_mean_{module_name}", threshold.data.mean().item(), step=data.epoch)
+
     mlflow.end_run()
 
 
@@ -456,8 +499,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--val_every_n_epochs",
         type=int,
-        default=2,
-        help="run validation every N epochs (default: 2)",
+        default=1,
+        help="run validation every N epochs (default: 1)",
     )
     parser.add_argument(
         "--path_mlflow",

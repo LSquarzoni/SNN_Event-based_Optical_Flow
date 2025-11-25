@@ -50,7 +50,7 @@ def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calib
         print("LIF layers will remain at FP32 (mixed precision)")
     else:
         print("Starting Full PTQ Calibration (Conv + LIF)...")
-    print(f"Using {num_batches} batches for calibration")
+    print(f"Using up to {num_batches} batches for calibration (across all sequences)")
     print("="*60)
     
     model = model.to(device)
@@ -79,18 +79,40 @@ def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calib
             # Use calibration_mode but it will only affect the q_lif quantizers during forward pass
             with calibration_mode(model):
                 with torch.no_grad():
-                    for batch_idx, item in enumerate(calibration_loader):
-                        if batch_idx >= num_batches:
+                    batch_count = 0
+                    end_calibration = False
+                    
+                    while not end_calibration:
+                        for item in calibration_loader:
+                            # Handle new sequence - reset model states
+                            if calibration_loader.dataset.new_seq:
+                                calibration_loader.dataset.new_seq = False
+                                model.reset_states()
+                            
+                            # Check if we've processed all sequences
+                            if calibration_loader.dataset.seq_num >= len(calibration_loader.dataset.files):
+                                end_calibration = True
+                                break
+                            
+                            # Check if we've reached the batch limit
+                            if batch_count >= num_batches:
+                                end_calibration = True
+                                break
+                            
+                            x = item["event_voxel"].to(device)
+                            cnt = item["event_cnt"].to(device)
+                            
+                            # Forward pass - state quantizers will collect statistics
+                            model(x, cnt)
+                            
+                            batch_count += 1
+                            if batch_count % 10 == 0:
+                                print(f"Calibration progress: {batch_count}/{num_batches} batches (sequence {calibration_loader.dataset.seq_num + 1}/{len(calibration_loader.dataset.files)})")
+                        
+                        if end_calibration:
                             break
-                        
-                        x = item["event_voxel"].to(device)
-                        cnt = item["event_cnt"].to(device)
-                        
-                        # Forward pass - state quantizers will collect statistics
-                        model(x, cnt)
-                        
-                        if (batch_idx + 1) % 10 == 0:
-                            print(f"Calibration progress: {batch_idx + 1}/{num_batches} batches")
+                    
+                    print(f"\nCalibration completed: {batch_count} batches across {calibration_loader.dataset.seq_num + 1} sequence(s)")
             
             print(f"\n✓ Successfully calibrated {len(state_quantizers)} LIF state quantizers")
         else:
@@ -120,18 +142,40 @@ def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calib
         # Now calibrate with calibration_mode (will only affect Conv layers)
         with calibration_mode(model):
             with torch.no_grad():
-                for batch_idx, item in enumerate(calibration_loader):
-                    if batch_idx >= num_batches:
+                batch_count = 0
+                end_calibration = False
+                
+                while not end_calibration:
+                    for item in calibration_loader:
+                        # Handle new sequence - reset model states
+                        if calibration_loader.dataset.new_seq:
+                            calibration_loader.dataset.new_seq = False
+                            model.reset_states()
+                        
+                        # Check if we've processed all sequences
+                        if calibration_loader.dataset.seq_num >= len(calibration_loader.dataset.files):
+                            end_calibration = True
+                            break
+                        
+                        # Check if we've reached the batch limit
+                        if batch_count >= num_batches:
+                            end_calibration = True
+                            break
+                        
+                        x = item["event_voxel"].to(device)
+                        cnt = item["event_cnt"].to(device)
+                        
+                        # Forward pass for calibration
+                        model(x, cnt)
+                        
+                        batch_count += 1
+                        if batch_count % 10 == 0:
+                            print(f"Calibration progress: {batch_count}/{num_batches} batches (sequence {calibration_loader.dataset.seq_num + 1}/{len(calibration_loader.dataset.files)})")
+                    
+                    if end_calibration:
                         break
-                    
-                    x = item["event_voxel"].to(device)
-                    cnt = item["event_cnt"].to(device)
-                    
-                    # Forward pass for calibration
-                    model(x, cnt)
-                    
-                    if (batch_idx + 1) % 10 == 0:
-                        print(f"Calibration progress: {batch_idx + 1}/{num_batches} batches")
+                
+                print(f"\nCalibration completed: {batch_count} batches across {calibration_loader.dataset.seq_num + 1} sequence(s)")
         
         # Restore LIF quantizers (but they remain uncalibrated/disabled for FP32 operation)
         for name, module, original_q_lif in lif_quantizers:
@@ -143,18 +187,40 @@ def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calib
         # CASE 1a: Full PTQ from FP32 - calibrate everything
         with calibration_mode(model):
             with torch.no_grad():
-                for batch_idx, item in enumerate(calibration_loader):
-                    if batch_idx >= num_batches:
+                batch_count = 0
+                end_calibration = False
+                
+                while not end_calibration:
+                    for item in calibration_loader:
+                        # Handle new sequence - reset model states
+                        if calibration_loader.dataset.new_seq:
+                            calibration_loader.dataset.new_seq = False
+                            model.reset_states()
+                        
+                        # Check if we've processed all sequences
+                        if calibration_loader.dataset.seq_num >= len(calibration_loader.dataset.files):
+                            end_calibration = True
+                            break
+                        
+                        # Check if we've reached the batch limit
+                        if batch_count >= num_batches:
+                            end_calibration = True
+                            break
+                        
+                        x = item["event_voxel"].to(device)
+                        cnt = item["event_cnt"].to(device)
+                        
+                        # Forward pass for calibration
+                        model(x, cnt)
+                        
+                        batch_count += 1
+                        if batch_count % 10 == 0:
+                            print(f"Calibration progress: {batch_count}/{num_batches} batches (sequence {calibration_loader.dataset.seq_num + 1}/{len(calibration_loader.dataset.files)})")
+                    
+                    if end_calibration:
                         break
-                    
-                    x = item["event_voxel"].to(device)
-                    cnt = item["event_cnt"].to(device)
-                    
-                    # Forward pass for calibration
-                    model(x, cnt)
-                    
-                    if (batch_idx + 1) % 10 == 0:
-                        print(f"Calibration progress: {batch_idx + 1}/{num_batches} batches")
+                
+                print(f"\nCalibration completed: {batch_count} batches across {calibration_loader.dataset.seq_num + 1} sequence(s)")
     
     print("Calibration completed!")
     print("="*60)
@@ -338,8 +404,8 @@ def test_quantized(args, config_parser):
         print("="*80)
         
         # QAT MODELS:
-        model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 6d7209d77eb349d293eaf407377dee51
-        #model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: b348da7ad3974d98a2fdc18edfaa58e4
+        model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 
+        #model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: 37dc70910aa345b19ec979f770d6a8c1
         
         calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 0
         

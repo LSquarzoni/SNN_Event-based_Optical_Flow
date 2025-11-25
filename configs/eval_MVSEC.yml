@@ -1,16 +1,16 @@
 data:
     #path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
-    mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
-    window: 1 # 1 for dt1, 0.25 for dt4
+    mode: gtflow_dt4 # gtflow_dt1/gtflow_dt4
+    window: 0.25 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
 
 model:
     mask_output: True
     quantization:
-        enabled: False
+        enabled: True
         type: int8 # int8 or int16
-        PTQ: False # Post Training Quantization enabled or not
+        PTQ: True # Post Training Quantization enabled or not
         Conv_only: False
 
 # To generate non-trained models -----------------------------------------------------------

@@ -10,7 +10,7 @@ from brevitas import config as cf
 from brevitas.export import export_onnx_qcdq
 
 # CRITICAL: Enable expandable segments to avoid memory fragmentation
-os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+#os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
@@ -26,7 +26,6 @@ from utils.utils import load_model, save_csv, save_diff
 from utils.visualization import Visualization
 
 cf.IGNORE_MISSING_KEYS = True
-
 
 def save_quantized_model(model, path, epoch=None, optimizer=None, loss=None, additional_info=None):
     """
@@ -183,7 +182,7 @@ def train_qat(args, config_parser):
 
     # model initialization with quantization enabled
     print(f"Initializing quantized model: {config['model']['name']}")
-    model = eval(config["model"]["name"])(config["model"].copy()).to(device)
+    model = eval(config["model"]["name"])(config["model"].copy())  # Don't move to device yet
     
     print("\n" + "="*80)
     if conv_only:
@@ -208,12 +207,32 @@ def train_qat(args, config_parser):
         print("At evaluation: Model is fully quantized, no calibration needed")
     print("="*80)
     
-    # Load pre-trained FP32 model if provided (for transfer learning)
-    if args.prev_runid:
-        print(f"\nLoading FP32 pre-trained model from run: {args.prev_runid}")
-        model = load_model(args.prev_runid, model, device)
-        print("✓ FP32 weights loaded - will train with quantization from these weights")
+    # CRITICAL: QAT must start from a pretrained FP32 model
+    if not args.prev_runid and not args.prev_model_path:
+        print("\n" + "!"*80)
+        print("WARNING: No pretrained model provided!")
+        print("!"*80)
+        print("QAT typically requires starting from a pretrained FP32 model.")
+        print("Training from scratch with quantization often fails to converge.")
+        print("Recommendation: Train an FP32 model first, then use --prev_runid or --prev_model_path")
+        print("!"*80)
+        response = input("\nContinue anyway? (yes/no): ")
+        if response.lower() != 'yes':
+            print("Exiting. Please train an FP32 model first with train_flow.py")
+            exit(1)
+    else:
+        if args.prev_model_path:
+            print(f"\n✓ Loading pretrained FP32 model from path: {args.prev_model_path}")
+            model = load_model(args.prev_runid if args.prev_runid else "", model, device, model_path_dir=args.prev_model_path, strict=False)
+        else:
+            print(f"\n✓ Loading pretrained FP32 model from run: {args.prev_runid}")
+            model = load_model(args.prev_runid, model, device, strict=False)
+        print("✓ FP32 weights loaded successfully")
+        print("  Quantization will be applied to these pretrained weights")
     
+    # Move model to device AFTER loading checkpoint (critical for Brevitas quantization buffers)
+    print(f"\nMoving model to device: {device}")
+    model = model.to(device)
     model.train()
 
     # optimizer
@@ -251,7 +270,7 @@ def train_qat(args, config_parser):
                 optimizer.zero_grad()
                 
                 # Empty cache at sequence boundaries
-                torch.cuda.empty_cache()
+                #torch.cuda.empty_cache()
 
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
@@ -361,12 +380,11 @@ def train_qat(args, config_parser):
                 optimizer.zero_grad()
 
                 model.detach_states()
-                
                 loss_function.reset()
                 
                 # Periodic garbage collection to free fragmented memory
-                if data.seq_num % 50 == 0:
-                    torch.cuda.empty_cache()
+                #if data.seq_num % 50 == 0:
+                    #torch.cuda.empty_cache()
 
             # print training info
             if config["vis"]["verbose"]:
@@ -418,7 +436,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prev_runid",
         default="",
-        help="Optional: FP32 pre-trained model run ID to use as starting point for transfer learning",
+        help="FP32 pre-trained model run ID (required for proper QAT training)",
+    )
+    parser.add_argument(
+        "--prev_model_path",
+        default="",
+        help="Direct path to FP32 checkpoint (e.g., mlruns/0/models/LIFFN/38/model.pth). If not provided, will try to load from runid.",
     )
     args = parser.parse_args()
 
