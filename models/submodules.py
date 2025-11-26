@@ -50,9 +50,9 @@ class ConvLayer(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, out_channels, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, out_channels, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
         else:
             self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)

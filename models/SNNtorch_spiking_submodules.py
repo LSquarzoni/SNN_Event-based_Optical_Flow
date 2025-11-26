@@ -446,14 +446,33 @@ class custom_ConvLIF(nn.Module):
         self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
 
-        self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
+        self.quantization_config = quantization_config["enabled"]
+
+        # Quantization checking
+        if quantization_config is not None and self.quantization_config:
+            self.ff = QuantConv2d(
+                input_size,
+                hidden_size,
+                kernel_size,
+                padding=padding,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=Int8ActPerTensorFloat,
+                output_quant=Int8ActPerTensorFloat,
+                return_quant_tensor=False,
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
+            )
+        else:
+            self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
 
         # weight init
         w_scale = math.sqrt(1 / input_size)
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
         # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
-        self.init_mem = torch.rand(1, hidden_size, 8, 8) * 0.8
+        self.init_mem = torch.rand(1, hidden_size, 256, 256) * 0.8
 
     def forward(self, input_, prev_state, residual=0):
         ff = self.ff(input_)
@@ -513,8 +532,41 @@ class custom_ConvLIFRecurrent(nn.Module):
         self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
 
-        self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
-        self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
+        self.quantization_config = quantization_config["enabled"]
+
+        # Quantization checking
+        if quantization_config is not None and self.quantization_config:
+            self.ff = QuantConv2d(
+                input_size,
+                hidden_size,
+                kernel_size,
+                padding=padding,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=Int8ActPerTensorFloat,
+                output_quant=Int8ActPerTensorFloat,
+                return_quant_tensor=False,
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
+            )
+            self.rec = QuantConv2d(
+                input_size,
+                hidden_size,
+                kernel_size,
+                padding=padding,
+                bias=False,
+                weight_quant=Int8WeightPerTensorFloat,
+                input_quant=Int8ActPerTensorFloat,
+                output_quant=Int8ActPerTensorFloat,
+                return_quant_tensor=False,
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
+            )
+        else:
+            self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
+            self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
 
         # weight init
         w_scale_ff = math.sqrt(1 / input_size)
@@ -523,9 +575,9 @@ class custom_ConvLIFRecurrent(nn.Module):
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
 
         # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
-        self.init_mem = torch.rand(1, hidden_size, 32, 32) * 0.8
+        self.init_mem = torch.rand(1, hidden_size, 256, 256) * 0.8
         # init_prev_spk: random binary {0,1} values with shape [1, C, H, W]
-        self.init_prev_spk = (torch.rand(1, hidden_size, 32, 32) > 0.5).to(torch.float32)
+        self.init_prev_spk = (torch.rand(1, hidden_size, 256, 256) > 0.5).to(torch.float32)
 
     def forward(self, input_, prev_state, residual=0):
         ff = self.ff(input_)
