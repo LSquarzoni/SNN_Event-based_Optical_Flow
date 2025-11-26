@@ -1,8 +1,8 @@
 experiment: Default
 
 data:
-    path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
-    #path: /scratch/msc25h1/training/ # path to dataset in my scratch
+    #path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
+    path: /usr/scratch/badile13/amarchei/training_256x256/ # path to 256x256 dataset
     mode: events # events
     window: 1000 # events
     window_loss: 10000 # events
@@ -21,8 +21,10 @@ model:
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         type: int8 # int8 or int16
+        PTQ: False 
+        Conv_only: False
 
 spiking_neuron:
     leak: [0.0, 1.0]
@@ -34,7 +36,7 @@ spiking_neuron:
 loss:
     flow_regul_weight: 0.001
     clip_grad: 100.0 # set to Null to disable
-    overwrite_intermediate: True
+    overwrite_intermediate: False
 
 optimizer:
     name: Adam
@@ -42,9 +44,9 @@ optimizer:
 
 loader:
     n_epochs: 100
-    batch_size: 8
-    resolution: [128, 128] # H x W
-    std_resolution: [128, 128]
+    batch_size: 2
+    resolution: [256, 256] # H x W
+    std_resolution: [256, 256] # H x W
     augment: ["Horizontal", "Vertical", "Polarity"]
     augment_prob: [0.5, 0.5, 0.5]
     gpu: 3

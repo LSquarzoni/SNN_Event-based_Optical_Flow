@@ -12,7 +12,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
-from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans
+from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans, AAE_Weighted, AAE_Filtered
 from models.model import (
     LIFFireNet,
     LIFFireNet_short,
@@ -25,44 +25,226 @@ from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization
 
 
-def calibrate_model_ptq(calibration_loader, model, device, num_batches=50):
+def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calibrate_conv_only=False, calibrate_states_only=False):
     """
     Calibrate the model for Post-Training Quantization (PTQ).
     This collects statistics to initialize quantization parameters without training.
+    
+    Args:
+        calibrate_conv_only: If True, only calibrate Conv layers (not LIF). Used for PTQ Conv-only mode.
+        calibrate_states_only: If True, only calibrate LIF state quantizers (for Conv-only QAT + PTQ LIF).
+                               Preserves trained Conv quantizers.
+        
+    Three calibration modes:
+    1. Full PTQ (both False): Calibrate Conv + LIF using calibration_mode
+    2. Conv-only PTQ (calibrate_conv_only=True): Calibrate only Conv, LIF stays FP32
+    3. QAT Conv + PTQ LIF (calibrate_states_only=True): Preserve Conv, calibrate LIF only
     """
     print("="*60)
-    print("Starting PTQ Calibration...")
-    print(f"Using {num_batches} batches for calibration")
+    if calibrate_states_only:
+        print("Starting LIF-Only Calibration (Conv-only QAT + PTQ LIF)...")
+        print("Preserving trained Conv weight/activation quantizers")
+        print("Calibrating LIF layers with PTQ")
+    elif calibrate_conv_only:
+        print("Starting Conv-Only PTQ Calibration...")
+        print("LIF layers will remain at FP32 (mixed precision)")
+    else:
+        print("Starting Full PTQ Calibration (Conv + LIF)...")
+    print(f"Using up to {num_batches} batches for calibration (across all sequences)")
     print("="*60)
     
     model = model.to(device)
     model.eval()
     
-    with calibration_mode(model):
-        with torch.no_grad():
-            for batch_idx, item in enumerate(calibration_loader):
-                if batch_idx >= num_batches:
-                    break
-                
-                x = item["event_voxel"].to(device)
-                cnt = item["event_cnt"].to(device)
-                
-                # Forward pass for calibration
-                model(x, cnt)
-                
-                if (batch_idx + 1) % 10 == 0:
-                    print(f"Calibration progress: {batch_idx + 1}/{num_batches} batches")
+    if calibrate_states_only:
+        # CASE 2: Hybrid mode - Conv-only QAT + PTQ LIF
+        # Model has full quantization structure, Conv quantizers are trained, LIF quantizers need calibration
+        
+        # Find all q_lif state quantizers
+        state_quantizers = []
+        lif_modules = []
+        for name, module in model.named_modules():
+            if hasattr(module, 'q_lif') and not isinstance(module.q_lif, torch.nn.Identity):
+                state_quantizers.append((name, module.q_lif))
+                lif_modules.append((name, module))
+        
+        if len(state_quantizers) > 0:
+            print(f"Found {len(state_quantizers)} LIF state quantizers to calibrate")
+            print("Preserving trained Conv quantizers...")
+            
+            # Put ONLY the q_lif quantizers into calibration mode
+            # We need to manually enable calibration for state quantizers since they're not regular layers
+            # The forward pass through snn.Leaky with state_quant will trigger calibration
+            
+            # Use calibration_mode but it will only affect the q_lif quantizers during forward pass
+            with calibration_mode(model):
+                with torch.no_grad():
+                    batch_count = 0
+                    end_calibration = False
+                    
+                    while not end_calibration:
+                        for item in calibration_loader:
+                            # Handle new sequence - reset model states
+                            if calibration_loader.dataset.new_seq:
+                                calibration_loader.dataset.new_seq = False
+                                model.reset_states()
+                            
+                            # Check if we've processed all sequences
+                            if calibration_loader.dataset.seq_num >= len(calibration_loader.dataset.files):
+                                end_calibration = True
+                                break
+                            
+                            # Check if we've reached the batch limit
+                            if batch_count >= num_batches:
+                                end_calibration = True
+                                break
+                            
+                            x = item["event_voxel"].to(device)
+                            cnt = item["event_cnt"].to(device)
+                            
+                            # Forward pass - state quantizers will collect statistics
+                            model(x, cnt)
+                            
+                            batch_count += 1
+                            if batch_count % 10 == 0:
+                                print(f"Calibration progress: {batch_count}/{num_batches} batches (sequence {calibration_loader.dataset.seq_num + 1}/{len(calibration_loader.dataset.files)})")
+                        
+                        if end_calibration:
+                            break
+                    
+                    print(f"\nCalibration completed: {batch_count} batches across {calibration_loader.dataset.seq_num + 1} sequence(s)")
+            
+            print(f"\n✓ Successfully calibrated {len(state_quantizers)} LIF state quantizers")
+        else:
+            print("\nERROR: No state quantizers (q_lif) found!")
+            print("This model doesn't have LIF quantization structure.")
+            print("Please ensure the model is initialized with full quantization (Conv_only=False).")
+            raise ValueError("Cannot apply PTQ to LIF: q_lif quantizers not found in model")
     
-    print("PTQ Calibration completed!")
+    elif calibrate_conv_only:
+        # CASE 1b: PTQ from FP32, Conv-only mode
+        # Calibrate ONLY Conv layers (weights, input_quant, output_quant)
+        # Do NOT calibrate LIF state quantizers (q_lif)
+        
+        # We need to selectively enable calibration mode ONLY for Conv quantizers
+        # Unfortunately, Brevitas calibration_mode() affects all quantizers
+        # Workaround: Temporarily disable LIF quantizers
+        
+        lif_quantizers = []
+        for name, module in model.named_modules():
+            if hasattr(module, 'q_lif') and not isinstance(module.q_lif, torch.nn.Identity):
+                lif_quantizers.append((name, module, module.q_lif))
+                # Temporarily replace with Identity to prevent calibration
+                module.q_lif = torch.nn.Identity()
+        
+        print(f"Temporarily disabled {len(lif_quantizers)} LIF quantizers")
+        
+        # Now calibrate with calibration_mode (will only affect Conv layers)
+        with calibration_mode(model):
+            with torch.no_grad():
+                batch_count = 0
+                end_calibration = False
+                
+                while not end_calibration:
+                    for item in calibration_loader:
+                        # Handle new sequence - reset model states
+                        if calibration_loader.dataset.new_seq:
+                            calibration_loader.dataset.new_seq = False
+                            model.reset_states()
+                        
+                        # Check if we've processed all sequences
+                        if calibration_loader.dataset.seq_num >= len(calibration_loader.dataset.files):
+                            end_calibration = True
+                            break
+                        
+                        # Check if we've reached the batch limit
+                        if batch_count >= num_batches:
+                            end_calibration = True
+                            break
+                        
+                        x = item["event_voxel"].to(device)
+                        cnt = item["event_cnt"].to(device)
+                        
+                        # Forward pass for calibration
+                        model(x, cnt)
+                        
+                        batch_count += 1
+                        if batch_count % 10 == 0:
+                            print(f"Calibration progress: {batch_count}/{num_batches} batches (sequence {calibration_loader.dataset.seq_num + 1}/{len(calibration_loader.dataset.files)})")
+                    
+                    if end_calibration:
+                        break
+                
+                print(f"\nCalibration completed: {batch_count} batches across {calibration_loader.dataset.seq_num + 1} sequence(s)")
+        
+        # Restore LIF quantizers (but they remain uncalibrated/disabled for FP32 operation)
+        for name, module, original_q_lif in lif_quantizers:
+            module.q_lif = original_q_lif
+        
+        print(f"LIF quantizers kept at FP32 (mixed precision mode)")
+    
+    else:
+        # CASE 1a: Full PTQ from FP32 - calibrate everything
+        with calibration_mode(model):
+            with torch.no_grad():
+                batch_count = 0
+                end_calibration = False
+                
+                while not end_calibration:
+                    for item in calibration_loader:
+                        # Handle new sequence - reset model states
+                        if calibration_loader.dataset.new_seq:
+                            calibration_loader.dataset.new_seq = False
+                            model.reset_states()
+                        
+                        # Check if we've processed all sequences
+                        if calibration_loader.dataset.seq_num >= len(calibration_loader.dataset.files):
+                            end_calibration = True
+                            break
+                        
+                        # Check if we've reached the batch limit
+                        if batch_count >= num_batches:
+                            end_calibration = True
+                            break
+                        
+                        x = item["event_voxel"].to(device)
+                        cnt = item["event_cnt"].to(device)
+                        
+                        # Forward pass for calibration
+                        model(x, cnt)
+                        
+                        batch_count += 1
+                        if batch_count % 10 == 0:
+                            print(f"Calibration progress: {batch_count}/{num_batches} batches (sequence {calibration_loader.dataset.seq_num + 1}/{len(calibration_loader.dataset.files)})")
+                    
+                    if end_calibration:
+                        break
+                
+                print(f"\nCalibration completed: {batch_count} batches across {calibration_loader.dataset.seq_num + 1} sequence(s)")
+    
+    print("Calibration completed!")
     print("="*60)
     return model
 
 
 def test_quantized(args, config_parser):
     """
-    Evaluate quantized models with two modes:
-    1. QAT: Load models trained with Quantization-Aware Training
-    2. PTQ: Apply Post-Training Quantization to FP32 models
+    Evaluate quantized models with multiple modes:
+    
+    1. PTQ from FP32:
+       - Load FP32 trained model
+       - Apply calibration (Conv-only or Full)
+       - Evaluate with quantized inference
+    
+    2. QAT Conv-only + PTQ LIF:
+       - Load Conv-only QAT model (convs already quantized)
+       - Optionally calibrate LIF layers (PTQ)
+       - Evaluate with mixed or full quantization
+    
+    3. QAT Full (no calibration needed):
+       - Load fully quantized QAT model
+       - All layers already quantized during training
+       - Direct evaluation
     """
     mlflow.set_tracking_uri(args.path_mlflow)
 
@@ -80,8 +262,8 @@ def test_quantized(args, config_parser):
 
     if "AEE" in config["metrics"]["name"]:
         if not config["loss"]["overwrite_intermediate"]:
-            config["loss"]["overwrite_intermediate"] = True
-            print("Warning: 'overwrite_intermediate' set to True for AEE computation")
+            config["loss"]["overwrite_intermediate"] = False
+            #print("Warning: 'overwrite_intermediate' set to True for AEE computation")
 
     if config["data"]["mode"] == "frames":
         raise NotImplementedError("Frame mode not supported")
@@ -89,17 +271,31 @@ def test_quantized(args, config_parser):
     # Determine quantization mode
     use_ptq = config["model"].get("quantization", {}).get("PTQ", False)
     quantization_enabled = config["model"].get("quantization", {}).get("enabled", False)
+    conv_only_config = config["model"].get("quantization", {}).get("Conv_only", False)
     
     if not quantization_enabled:
         raise ValueError("Quantization not enabled in config! Set model.quantization.enabled: True")
     
     print("="*80)
     if use_ptq:
-        print("Evaluation Mode: POST-TRAINING QUANTIZATION (PTQ)")
-        print("Will apply quantization to FP32 model during evaluation")
+        print("EVALUATION MODE: Post-Training Quantization (PTQ)")
+        print("-" * 80)
+        print("Starting from: FP32 trained model")
+        if conv_only_config:
+            print("Calibration: Conv-only (LIF stays FP32)")
+        else:
+            print("Calibration: Full (Conv + LIF)")
     else:
-        print("Evaluation Mode: QUANTIZATION-AWARE TRAINING (QAT)")
-        print("Will load model trained with QAT")
+        print("EVALUATION MODE: Quantization-Aware Training (QAT)")
+        print("-" * 80)
+        if conv_only_config:
+            print("Model type: Conv-only QAT")
+            print("  - Convolutions: Already quantized (trained)")
+            print("  - LIF: Can add PTQ calibration or keep FP32")
+        else:
+            print("Model type: Full QAT")
+            print("  - All layers: Already quantized (trained)")
+            print("  - No calibration needed")
     print("="*80)
 
     if not args.debug:
@@ -142,10 +338,14 @@ def test_quantized(args, config_parser):
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
     
     
-    
+    # ========================================================================
+    # CASE 1: PTQ from FP32 model
+    # ========================================================================
     if use_ptq:
-        # PTQ Mode: Load FP32 model, then calibrate
-        print("\nLoading FP32 pre-trained model for PTQ...")
+        print("\n" + "="*80)
+        print("CASE 1: PTQ - Post-Training Quantization from FP32 Model")
+        print("="*80)
+        print("\nLoading FP32 pre-trained model...")
         
         # FP32 MODELS:
         model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
@@ -157,51 +357,222 @@ def test_quantized(args, config_parser):
         #model_path_dir = "mlruns/0/models/LIFFN_8ch_short/23/model.pth" # runid: b61534e5119a4704a66638c1ba78f308
         #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
         
-        # Use strict=False for PTQ to handle architecture mismatches between old/new LIF implementations
-        print("Note: Loading with strict=False to handle potential architecture differences")
+        print(f"Loading weights from: {model_path_dir}")
+        print("Note: Using strict=False to handle architecture differences")
         model = load_model(args.runid, model, device, model_path_dir=model_path_dir, strict=False)
         
         # Calibration for PTQ
-        print("\nCalibrating model for PTQ...")
         calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 50
-        model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches)
         
-        print("\nPTQ model ready for evaluation")
-        print("Note: This uses fake quantization (FP32 compute with quantization simulation)")
+        if conv_only_config:
+            print(f"\nApplying PTQ calibration: Conv-only mode ({calibration_batches} batches)")
+            print("  ✓ Convolutions: Will be calibrated and quantized")
+            print("  ✓ LIF layers: Stay at FP32 (mixed precision)")
+            model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches, 
+                                       calibrate_conv_only=True, calibrate_states_only=False)
+        else:
+            print(f"\nApplying PTQ calibration: Full mode ({calibration_batches} batches)")
+            print("  ✓ Convolutions: Will be calibrated and quantized")
+            print("  ✓ LIF layers: Will be calibrated and quantized")
+            model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches,
+                                       calibrate_conv_only=False, calibrate_states_only=False)
+        
+        # CRITICAL: Reset dataloader after calibration
+        print("\nResetting dataloader for full dataset evaluation...")
+        data = H5Loader(config, config["model"]["num_bins"], config["model"]["round_encoding"])
+        dataloader = torch.utils.data.DataLoader(
+            data,
+            drop_last=False,
+            batch_size=config["loader"]["batch_size"],
+            collate_fn=data.custom_collate,
+            worker_init_fn=config_parser.worker_init_fn,
+            **kwargs,
+        )
+        
+        print("\n✓ PTQ model ready for evaluation")
+        print("  Mode: Fake quantization (FP32 compute with quantization simulation)")
+        
+    # ========================================================================
+    # CASE 2 & 3: QAT models (Conv-only or Full)
+    # ========================================================================
     else:
-        # QAT Mode: Load quantized checkpoint
-        print("\nLoading QAT quantized model checkpoint...")
+        print("\n" + "="*80)
+        if conv_only_config:
+            print("CASE 2: Conv-only QAT + Optional PTQ for LIF")
+        else:
+            print("CASE 3: Full QAT (No Calibration Needed)")
+        print("="*80)
         
         # QAT MODELS:
-        model_path_dir = "mlruns/0/models/LIFFN_int8/model_quant_best.pth" # runid: d5ac111464894b2e8379baaa538eeca7
-        #model_path_dir = "mlruns/0/models/LIFFN_16ch_int8/model_quant_best.pth" # runid: 
-        #model_path_dir = "mlruns/0/models/LIFFN_8ch_int8/model_quant_best.pth" # runid: 
-        #model_path_dir = "mlruns/0/models/LIFFN_short_int8/model_quant_best.pth" # runid: 
-        #model_path_dir = "mlruns/0/models/LIFFN_short_16ch_int8/model_quant_best.pth" # runid: 
+        model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 
+        #model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: 37dc70910aa345b19ec979f770d6a8c1
         
-        if model_path_dir:
+        calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 0
+        
+        # ----------------------------------------------------------------
+        # CASE 2: Conv-only QAT - decide on LIF quantization
+        # ----------------------------------------------------------------
+        if conv_only_config and calibration_batches > 0:
+            print("\n" + "-"*80)
+            print("HYBRID MODE: Conv-only QAT + PTQ LIF")
+            print("-"*80)
+            print("\nStrategy:")
+            print("  1. Initialize model with FULL quantization structure (Conv + LIF quantizers)")
+            print("  2. Load Conv-only QAT checkpoint:")
+            print("     - Conv quantizer metadata (scales, zero-points) → preserves QAT training")
+            print("     - LIF parameters (beta, threshold) → preserves learned dynamics")
+            print("     - Conv weights → trained values")
+            print("     - LIF q_lif quantizers → exist but uninitialized (will be calibrated)")
+            print("  3. Apply PTQ calibration ONLY to LIF state quantizers (q_lif)")
+            print("     - Conv quantizers remain unchanged (preserve QAT training)")
+            print("     - LIF beta/threshold remain unchanged (preserve learned dynamics)")
+            print("  4. Result: True INT8 for both Conv and LIF with optimal parameters")
+            print("-"*80)
+            
+            # Step 1: Model already initialized with full quant structure (from config)
+            print("\n✓ Step 1: Model initialized with full quantization structure")
+            print(f"  - Config has Conv_only={conv_only_config} but model creation uses full structure")
+            
+            # Verify model has q_lif
+            has_q_lif = False
+            for name, module in model.named_modules():
+                if hasattr(module, 'q_lif') and not isinstance(module.q_lif, torch.nn.Identity):
+                    has_q_lif = True
+                    break
+            
+            if not has_q_lif:
+                print("\nERROR: Model doesn't have q_lif quantizers!")
+                print("The model must be initialized with Conv_only=False for this hybrid mode.")
+                print("Please update the config to use full quantization structure during model init.")
+                return
+            
+            # Step 2: Load Conv-only QAT checkpoint
+            print("\n✓ Step 2: Loading Conv-only QAT checkpoint...")
+            print(f"  From: {model_path_dir}")
+            print("  This will restore:")
+            print("    - Conv quantizer metadata (scales, zero-points)")
+            print("    - LIF parameters (beta, threshold) from training")
+            print("    - Conv weights")
+            
             model, checkpoint = load_quantized_model(model, model_path_dir, device)
             if checkpoint:
-                print(f"Loaded from: {model_path_dir}")
+                print(f"  ✓ Loaded successfully!")
                 if 'epoch' in checkpoint:
-                    print(f"  Trained for {checkpoint['epoch']} epochs")
+                    print(f"    Trained epochs: {checkpoint['epoch']}")
+                if 'loss' in checkpoint:
+                    print(f"    Final loss: {checkpoint['loss']:.6f}")
+                
+                # Verify LIF parameters were loaded
+                lif_params_count = 0
+                for name, param in model.named_parameters():
+                    if 'beta' in name or 'threshold' in name:
+                        lif_params_count += 1
+                if lif_params_count > 0:
+                    print(f"    ✓ Restored {lif_params_count} LIF parameters (beta, threshold)")
+            else:
+                print("  ERROR: Failed to load checkpoint!")
+                return
+            
+            # Move model to device
+            print(f"\n  Moving model to {device}...")
+            model = model.to(device)
+            
+            # Step 3: Apply PTQ calibration to LIF only
+            print(f"\n✓ Step 3: Applying PTQ calibration to LIF layers ({calibration_batches} batches)...")
+            print("  ✓ Conv quantizers: Keep trained QAT metadata (no recalibration)")
+            print("  ✓ LIF beta/threshold: Keep trained values (no modification)")
+            print("  ✓ LIF q_lif quantizers: Calibrate with PTQ (initialize scales/zero-points)")
+            
+            # Verify beta and threshold are reasonable before calibration
+            beta_values = []
+            thresh_values = []
+            for name, module in model.named_modules():
+                if hasattr(module, 'beta'):
+                    beta_values.append(module.beta.mean().item())
+                if hasattr(module, 'threshold'):
+                    thresh_values.append(module.threshold.mean().item())
+            
+            if beta_values and thresh_values:
+                print(f"\n  LIF parameters from training:")
+                print(f"    Beta (leak): min={min(beta_values):.4f}, max={max(beta_values):.4f}, mean={sum(beta_values)/len(beta_values):.4f}")
+                print(f"    Threshold: min={min(thresh_values):.4f}, max={max(thresh_values):.4f}, mean={sum(thresh_values)/len(thresh_values):.4f}")
+            
+            model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches,
+                                       calibrate_conv_only=False, calibrate_states_only=True)
+            
+            # Reset dataloader
+            print("\nResetting dataloader for full dataset evaluation...")
+            data = H5Loader(config, config["model"]["num_bins"], config["model"]["round_encoding"])
+            dataloader = torch.utils.data.DataLoader(
+                data,
+                drop_last=False,
+                batch_size=config["loader"]["batch_size"],
+                collate_fn=data.custom_collate,
+                worker_init_fn=config_parser.worker_init_fn,
+                **kwargs,
+            )
+            
+            print("\n✓ Step 4: Hybrid model ready!")
+            print("  ✓ Conv: INT8 (QAT trained)")
+            print("  ✓ LIF: INT8 (PTQ calibrated)")
+            
+        # ----------------------------------------------------------------
+        # CASE 2 alternative: Conv-only QAT without LIF quantization
+        # ----------------------------------------------------------------
+        elif conv_only_config:
+            print("\n" + "-"*80)
+            print("MIXED PRECISION MODE: Conv-only QAT")
+            print("-"*80)
+            print("\nLoading Conv-only QAT checkpoint...")
+            print(f"From: {model_path_dir}")
+            
+            model, checkpoint = load_quantized_model(model, model_path_dir, device)
+            if checkpoint:
+                print(f"✓ Loaded from: {model_path_dir}")
+                if 'epoch' in checkpoint:
+                    print(f"  Trained epochs: {checkpoint['epoch']}")
                 if 'loss' in checkpoint:
                     print(f"  Final loss: {checkpoint['loss']:.6f}")
             
-            # Fix device mismatch: Move all quantization parameters to the correct device
-            print(f"\nMoving quantization metadata to {device}...")
+            # Move model to correct device
+            print(f"\nMoving model to {device}...")
             model = model.to(device)
             
-            # Calibrate state quantization if QAT was trained without it
-            # (QAT models typically don't have state quantization due to VRAM constraints)
-            if hasattr(args, 'calibration_batches') and args.calibration_batches > 0:
-                print("\nCalibrating state quantization for QAT model...")
-                print("(QAT trained weights/activations, now calibrating states only)")
-                calibration_batches = args.calibration_batches
-                model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches)
+            print("\nMixed Precision Configuration:")
+            print("  ✓ Convolutions: INT8 (QAT trained)")
+            print("  ✓ LIF layers: FP32 (no quantization)")
+            print("\n✓ Mixed precision model ready for evaluation")
+        
+        # ----------------------------------------------------------------
+        # CASE 3: Full QAT - already fully quantized
+        # ----------------------------------------------------------------
         else:
-            print("Error: model_path_dir not set for QAT evaluation")
-            return
+            print("\n" + "-"*80)
+            print("FULL QAT MODE")
+            print("-"*80)
+            print("\nLoading Full QAT checkpoint...")
+            print(f"From: {model_path_dir}")
+            
+            model, checkpoint = load_quantized_model(model, model_path_dir, device)
+            if checkpoint:
+                print(f"✓ Loaded from: {model_path_dir}")
+                if 'epoch' in checkpoint:
+                    print(f"  Trained epochs: {checkpoint['epoch']}")
+                if 'loss' in checkpoint:
+                    print(f"  Final loss: {checkpoint['loss']:.6f}")
+            
+            # Move model to correct device
+            print(f"\nMoving model to {device}...")
+            model = model.to(device)
+            
+            if calibration_batches > 0:
+                print("\nWARNING: Calibration requested but not needed for Full QAT!")
+                print("Skipping calibration to preserve trained quantizers...")
+            
+            print("\nFully Quantized Configuration:")
+            print("  ✓ Convolutions: INT8 (QAT trained)")
+            print("  ✓ LIF layers: INT8 (QAT trained)")
+            print("\n✓ Fully quantized model ready for evaluation")
     
     model.eval()
 
@@ -352,7 +723,23 @@ def test_quantized(args, config_parser):
     print("Evaluation Results")
     print("="*80)
     print(f"Model: {config['model']['name']}")
-    print(f"Quantization Mode: {'PTQ' if use_ptq else 'QAT'}")
+    
+    # Detailed mode reporting
+    if use_ptq:
+        print(f"Mode: PTQ from FP32")
+        if conv_only_config:
+            print("  Quantization: Conv-only (LIF at FP32)")
+        else:
+            print("  Quantization: Full (Conv + LIF)")
+    else:
+        if conv_only_config:
+            if calibration_batches > 0:
+                print(f"Mode: Hybrid (QAT Conv + PTQ LIF)")
+            else:
+                print(f"Mode: Mixed Precision (QAT Conv, FP32 LIF)")
+        else:
+            print(f"Mode: Full QAT")
+    
     if "metrics" in config.keys():
         for metric in config["metrics"]["name"]:
             if metric in results:
@@ -375,14 +762,47 @@ def test_quantized(args, config_parser):
                 if metric in ["AEE", "NEE", "AE"] and metric + "_percent" in results:
                     percent_values = [float(v) for v in results[metric + "_percent"].values()]
                     mlflow.log_metric(f"test_{metric.lower()}_percent", np.mean(percent_values))
-        mlflow.log_param("quantization_mode", "PTQ" if use_ptq else "QAT")
+        
+        # Log detailed mode information
+        if use_ptq:
+            mlflow.log_param("eval_mode", "PTQ")
+            mlflow.log_param("ptq_type", "Conv_only" if conv_only_config else "Full")
+        else:
+            if conv_only_config:
+                if calibration_batches > 0:
+                    mlflow.log_param("eval_mode", "Hybrid_QAT_Conv_PTQ_LIF")
+                else:
+                    mlflow.log_param("eval_mode", "Mixed_Precision_QAT_Conv")
+            else:
+                mlflow.log_param("eval_mode", "Full_QAT")
+        
         mlflow.end_run()
 
     return results
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate Quantized SNN Models (QAT or PTQ)")
+    parser = argparse.ArgumentParser(
+        description="Evaluate Quantized SNN Models",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Evaluation Modes:
+-----------------
+1. PTQ from FP32:
+   Set in config: quantization.PTQ = True
+   - Conv-only: quantization.Conv_only = True (LIF stays FP32)
+   - Full: quantization.Conv_only = False (Conv + LIF quantized)
+   
+2. QAT Conv-only + Optional PTQ LIF:
+   Set in config: quantization.PTQ = False, quantization.Conv_only = True
+   - Mixed precision: --calibration_batches 0 (LIF stays FP32)
+   - Hybrid: --calibration_batches > 0 (add PTQ for LIF)
+   
+3. Full QAT (no calibration):
+   Set in config: quantization.PTQ = False, quantization.Conv_only = False
+   - All layers already quantized during training
+        """
+    )
     parser.add_argument(
         "--config",
         default="configs/eval_MVSEC.yml",
@@ -401,13 +821,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_path",
         default="",
-        help="Optional: Direct path to model checkpoint (for QAT models: path to .pth file)",
+        help="Optional: Direct path to model checkpoint",
     )
     parser.add_argument(
         "--calibration_batches",
         type=int,
         default=50,
-        help="Number of batches for PTQ calibration (only used if PTQ=True)",
+        help="Number of batches for calibration. PTQ: calibrates based on Conv_only flag. QAT Conv-only: if >0 calibrates LIF (PTQ), if 0 keeps LIF at FP32. Full QAT: ignored.",
     )
     parser.add_argument(
         "--path_results",
@@ -437,16 +857,31 @@ if __name__ == "__main__":
     
     # Print evaluation info
     use_ptq = config_parser.config["model"].get("quantization", {}).get("PTQ", False)
+    conv_only = config_parser.config["model"].get("quantization", {}).get("Conv_only", False)
+    
     print("\n" + "="*80)
     print("Quantized Model Evaluation")
     print("="*80)
     print(f"Config: {args.config}")
     print(f"Run ID: {args.runid}")
-    print(f"Mode: {'PTQ (Post-Training Quantization)' if use_ptq else 'QAT (Quantization-Aware Training)'}")
+    
+    if use_ptq:
+        print(f"Base: PTQ from FP32 model")
+        print(f"Calibration: {'Conv-only' if conv_only else 'Full (Conv + LIF)'}")
+        print(f"Calibration Batches: {args.calibration_batches}")
+    else:
+        print(f"Base: QAT model")
+        if conv_only:
+            if args.calibration_batches > 0:
+                print(f"Type: Hybrid (QAT Conv + PTQ LIF)")
+                print(f"LIF Calibration Batches: {args.calibration_batches}")
+            else:
+                print(f"Type: Mixed Precision (QAT Conv, FP32 LIF)")
+        else:
+            print(f"Type: Full QAT (no calibration needed)")
+    
     if args.model_path:
         print(f"Model Path: {args.model_path}")
-    if use_ptq:
-        print(f"PTQ Calibration Batches: {args.calibration_batches}")
     print("="*80 + "\n")
     
     # Run evaluation

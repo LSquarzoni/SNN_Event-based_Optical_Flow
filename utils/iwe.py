@@ -37,13 +37,10 @@ def get_interpolation(events, flow, tref, res, flow_scaling, round_idx=False):
     warped_events = events[:, :, 1:3] + (tref - events[:, :, 0:1]) * flow * flow_scaling
 
     if round_idx:
-
         # no bilinear interpolation
         idx = torch.round(warped_events)
         weights = torch.ones(idx.shape).to(events.device)
-
     else:
-
         # get scattering indices
         top_y = torch.floor(warped_events[:, :, 0:1])
         bot_y = torch.floor(warped_events[:, :, 0:1] + 1)
@@ -86,6 +83,10 @@ def interpolate(idx, weights, res, polarity_mask=None):
 
     if polarity_mask is not None:
         weights = weights * polarity_mask
+    # Debug assertion to catch out-of-bounds indices
+    if not (torch.all(idx >= 0) and torch.all(idx < res[0] * res[1])):
+        print(f"[DEBUG] Invalid idx values: min={idx.min().item()}, max={idx.max().item()}, shape={idx.shape}")
+        raise ValueError(f"Invalid idx values detected in interpolate: min={idx.min().item()}, max={idx.max().item()}, shape={idx.shape}")
     iwe = torch.zeros((idx.shape[0], res[0] * res[1], 1)).to(idx.device)
     iwe = iwe.scatter_add_(1, idx.long(), weights)
     iwe = iwe.view((idx.shape[0], 1, res[0], res[1]))

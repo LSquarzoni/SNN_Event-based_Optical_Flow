@@ -15,7 +15,7 @@ cf.IGNORE_MISSING_KEYS = True
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader, H5Loader_original
-from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans
+from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans, AAE_Weighted, AAE_Filtered
 from models.model import (
     FireNet,
     FireNet_short,
@@ -169,6 +169,12 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN/8/model.pth" # runid: 98efd73ac99646c8bd35e387217a7d94
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newOUT/25/model.pth" # runid: bf537ca6bde14f8e91e59590bfc2ca94
+    
+    # VALIDATED TRAINING:
+    #model_path_dir = "mlruns/0/models/LIFFN_validation_loss/" # runid: 29956f36b457467cbddc7b4a0c680a54
+    
+    # 256x256 DATASET:
+    #model_path_dir = "mlruns/0/models/LIFFN_256x256//model.pth" # runid: 97538a1b16bb4eed982a4da6db8bad16
     
     # POOLED MODELS:
     #model_path_dir = "mlruns/0/models/LIFFN_128x128/5/model.pth" # runid: 84cfb35b11e749d891d8d17b56fa75e0
@@ -350,6 +356,13 @@ def test(args, config_parser):
     # Save aggregated error heatmaps if enabled
     if not args.debug and "metrics" in config.keys() and config["metrics"].get("heat_map", False):
         print("\nSaving aggregated error heatmaps...")
+        
+        # Get magnitude threshold from config (default: 0.5)
+        mag_threshold = config["metrics"].get("mag_threshold", 0.5)
+        show_overlay = config["metrics"].get("show_magnitude_overlay", True)
+        save_magnitude = config["metrics"].get("save_magnitude_map", True)
+        save_combined = config["metrics"].get("save_combined", True)
+        
         for i, metric in enumerate(config["metrics"]["name"]):
             if metric in ["AEE", "AAE", "NAAE"]:  # Only these metrics support heatmap visualization
                 heatmap_dir = os.path.join(path_results, "heatmaps")
@@ -358,7 +371,11 @@ def test(args, config_parser):
                 heatmap_path = os.path.join(heatmap_dir, f"{metric}_heatmap.png")
                 success = criteria[i].save_error_heatmap(
                     save_path=heatmap_path,
-                    title=f"Aggregated {metric} Error Distribution (Full Evaluation)"
+                    title=f"Aggregated {metric} Error Distribution (Full Evaluation)",
+                    mag_threshold=mag_threshold,
+                    show_magnitude_overlay=show_overlay,
+                    save_magnitude_map=save_magnitude,
+                    save_combined=save_combined
                 )
                 if success:
                     print(f"  ✓ Saved {metric} heatmap to {heatmap_path}")

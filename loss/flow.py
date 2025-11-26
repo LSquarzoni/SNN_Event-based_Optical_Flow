@@ -108,6 +108,14 @@ class EventWarping(torch.nn.Module):
         if self._flow_maps_x is None:
             self._flow_maps_x = []
             self._flow_maps_y = []
+            
+        for i, flow in enumerate(flow_list):
+            if i == len(self._flow_maps_x):
+                self._flow_maps_x.append(flow[:, 0:1, :, :])
+                self._flow_maps_y.append(flow[:, 1:2, :, :])
+            else:
+                self._flow_maps_x[i] = torch.cat([self._flow_maps_x[i], flow[:, 0:1, :, :]], dim=1)
+                self._flow_maps_y[i] = torch.cat([self._flow_maps_y[i], flow[:, 1:2, :, :]], dim=1)
 
         # update timestamp index
         self._passes += 1
@@ -859,3 +867,58 @@ class AE_ofMeans(BaseValidationLoss):
             AE_ofMeans = AE_ofMeans.unsqueeze(0)
 
         return AE_ofMeans
+    
+class AAE_Weighted(BaseValidationLoss):
+    """Magnitude-weighted angular error"""
+
+    def forward(self):
+        # convert flow
+        flow = self._flow_map[-1] * self.flow_scaling
+        flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
+        
+        flow_norm = torch.norm(flow, dim=1, keepdim=True)
+        gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
+        dot = torch.sum(flow * self._gtflow, dim=1)
+        cos_angle = dot / (flow_norm.squeeze(1) * gtflow_norm.squeeze(1) + 1e-9)
+        angular_error = torch.acos(torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5))
+        
+        # Weight by magnitude
+        flow_mag = flow_norm.squeeze(1)
+        event_mask = self._event_mask[:, -1, :, :].bool()
+        gtflow_mask = ~((self._gtflow[:, 0, :, :] == 0.0) & (self._gtflow[:, 1, :, :] == 0.0))
+        mask = event_mask & gtflow_mask
+        
+        weighted_error = (angular_error * flow_mag).view(flow.shape[0], -1)
+        weight_sum = (flow_mag * mask.float()).view(flow.shape[0], -1).sum(dim=1)
+        
+        AAE_weighted = weighted_error.sum(dim=1) / (weight_sum + 1e-9)
+        return AAE_weighted
+
+class AAE_Filtered(BaseValidationLoss):
+    """Angular error filtered by magnitude threshold"""
+    def __init__(self, config, device, flow_scaling=128, mag_threshold=0.5):
+        super().__init__(config, device, flow_scaling)
+        self.mag_threshold = mag_threshold
+    
+    def forward(self):
+        # convert flow
+        flow = self._flow_map[-1] * self.flow_scaling
+        flow *= self._dt_gt.to(self.device) / self._dt_input.to(self.device)
+        
+        flow_norm = torch.norm(flow, dim=1, keepdim=True)
+        gtflow_norm = torch.norm(self._gtflow, dim=1, keepdim=True)
+        dot = torch.sum(flow * self._gtflow, dim=1)
+        cos_angle = dot / (flow_norm.squeeze(1) * gtflow_norm.squeeze(1) + 1e-9)
+        angular_error = torch.acos(torch.clamp(cos_angle, -1 + 1e-5, 1 - 1e-5))
+        
+        # Filter by magnitude
+        event_mask = self._event_mask[:, -1, :, :].bool()
+        gtflow_mask = ~((self._gtflow[:, 0, :, :] == 0.0) & (self._gtflow[:, 1, :, :] == 0.0))
+        mag_mask = flow_norm.squeeze(1) >= self.mag_threshold
+        
+        mask = event_mask & gtflow_mask & mag_mask
+        mask_flat = mask.view(flow.shape[0], -1)
+        error_flat = angular_error.view(flow.shape[0], -1) * mask_flat.float()
+        
+        AAE_filtered = error_flat.sum(dim=1) / (mask_flat.sum(dim=1) + 1e-9)
+        return AAE_filtered

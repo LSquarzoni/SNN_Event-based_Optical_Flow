@@ -87,7 +87,15 @@ class BaseDataLoader(torch.utils.data.Dataset):
         ts = torch.from_numpy(ts.astype(np.float32))
         ps = torch.from_numpy(ps.astype(np.float32)) * 2 - 1
         if ts.shape[0] > 0:
-            ts = (ts - ts[0]) / (ts[-1] - ts[0])
+            # Add debug check
+            if torch.isnan(ts).any() or torch.isinf(ts).any():
+                print("[DEBUG] NaN or Inf in ts before normalization!", ts)
+            # If you normalize, e.g. ts = (ts - ts.min()) / (ts.max() - ts.min()), protect against zero division
+            ts_range = ts.max() - ts.min()
+            if ts_range > 0:
+                ts = (ts - ts.min()) / ts_range
+            else:
+                ts = torch.zeros_like(ts)
         return xs, ys, ts, ps
 
     def augment_events(self, xs, ys, ps, batch):
