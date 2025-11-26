@@ -79,11 +79,11 @@ class SNNtorch_ConvLIF(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         
-        # Per-channel learnable parameters matching original implementation
-        self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
-        self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
-        
-        # Create snn.Leaky layer - we'll update its parameters dynamically
+        # Per-channel parameters for initialization only
+        beta_init = torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1])
+        threshold_init = torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1])
+
+        # Create snn.Leaky layer - parameters set at construction only
         reset_mechanism = "zero" if hard_reset else "subtract"
         
         self.quantization_config = quantization_config["enabled"]
@@ -102,15 +102,15 @@ class SNNtorch_ConvLIF(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             # State quantization for membrane potential
             self.q_lif = quant.state_quant(num_bits=8, uniform=True, thr_centered=False)
             self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
+                beta=beta_init,
+                threshold=threshold_init,
                 learn_beta=learn_leak,
                 learn_threshold=learn_thresh,
                 reset_mechanism=reset_mechanism,
@@ -129,13 +129,13 @@ class SNNtorch_ConvLIF(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
+                beta=beta_init,
+                threshold=threshold_init,
                 learn_beta=learn_leak,
                 learn_threshold=learn_thresh,
                 reset_mechanism=reset_mechanism,
@@ -144,8 +144,8 @@ class SNNtorch_ConvLIF(nn.Module):
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
             self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
+                beta=beta_init,
+                threshold=threshold_init,
                 learn_beta=learn_leak,
                 learn_threshold=learn_thresh,
                 reset_mechanism=reset_mechanism,
@@ -235,11 +235,11 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         
-        # Per-channel learnable parameters matching original implementation
-        self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
-        self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
+        # Per-channel parameters for initialization only
+        beta_init = torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1])
+        threshold_init = torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1])
 
-        # Create snn.Leaky layer - we'll update its parameters dynamically
+        # Create snn.Leaky layer - parameters set at construction only
         reset_mechanism = "zero" if hard_reset else "subtract"
         
         self.quantization_config = quantization_config["enabled"]
@@ -258,9 +258,9 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.rec = QuantConv2d(
                 hidden_size,
@@ -272,15 +272,15 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             # State quantization for membrane potential
             self.q_lif = quant.state_quant(num_bits=8, uniform=True, thr_centered=False)
             self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
+                beta=beta_init,
+                threshold=threshold_init,
                 learn_beta=learn_leak,
                 learn_threshold=learn_thresh,
                 reset_mechanism=reset_mechanism,
@@ -298,9 +298,9 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.rec = QuantConv2d(
                 hidden_size,
@@ -312,13 +312,13 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                scaling_per_output_channel=True,
-                per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                scaling_stats_permute_dims=(1, 0, 2, 3),
+                #scaling_per_output_channel=True,
+                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
+                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
+                beta=beta_init,
+                threshold=threshold_init,
                 learn_beta=learn_leak,
                 learn_threshold=learn_thresh,
                 reset_mechanism=reset_mechanism,
@@ -328,8 +328,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.lif = snn.Leaky(
-                beta=self.beta,
-                threshold=self.threshold,
+                beta=beta_init,
+                threshold=threshold_init,
                 learn_beta=learn_leak,
                 learn_threshold=learn_thresh,
                 reset_mechanism=reset_mechanism,

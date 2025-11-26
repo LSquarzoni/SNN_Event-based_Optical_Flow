@@ -236,7 +236,12 @@ def train(args, config_parser):
 
     # training loop
     data.shuffle()
+
     while True:
+        # Prepare metrics dict for batching
+        metrics_dict = {}
+        grad_metrics = {}
+        param_metrics = {}
         for inputs in dataloader:
 
             if data.new_seq:
@@ -248,7 +253,7 @@ def train(args, config_parser):
 
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
-                mlflow.log_metric("loss", avg_train_loss, step=data.epoch)
+                metrics_dict["loss"] = avg_train_loss
 
                 # Run validation every N epochs
                 val_aae = None
@@ -258,8 +263,8 @@ def train(args, config_parser):
                     print(f"Running validation at epoch {data.epoch}...")
                     print(f"{'='*60}")
                     val_aae, val_aee = validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True)
-                    mlflow.log_metric("val_AAE", val_aae, step=data.epoch)
-                    mlflow.log_metric("val_AEE", val_aee, step=data.epoch)
+                    metrics_dict["val_AAE"] = val_aae
+                    metrics_dict["val_AEE"] = val_aee
                     print(f"{'='*60}\n")
 
                 # Print epoch summary
@@ -397,6 +402,27 @@ def train(args, config_parser):
                     print(f"Stopping at epoch {data.epoch}.")
                     end_train = True
 
+                # --- BATCHED LOGGING OF MODEL PARAMETERS AND GRADIENTS ---
+                # Gradients
+                for name, param in model.named_parameters():
+                    if param.grad is not None:
+                        grad_metrics[f"grad_mean_{name}"] = param.grad.mean().item()
+                """ # Conv2d weights and LIF params
+                for module_name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Conv2d):
+                        param_metrics[f"conv_weight_mean_{module_name}"] = module.weight.data.mean().item()
+                    if hasattr(module, 'lif'):
+                        beta = getattr(module.lif, 'beta', None)
+                        threshold = getattr(module.lif, 'threshold', None)
+                        if beta is not None:
+                            param_metrics[f"lif_beta_mean_{module_name}"] = beta.data.mean().item()
+                        if threshold is not None:
+                            param_metrics[f"lif_threshold_mean_{module_name}"] = threshold.data.mean().item() """
+                # Merge all metrics
+                metrics_dict.update(grad_metrics)
+                metrics_dict.update(param_metrics)
+                mlflow.log_metrics(metrics_dict, step=data.epoch)
+
             # forward pass
             x = model(inputs["event_voxel"].to(device), inputs["event_cnt"].to(device))
 
@@ -466,21 +492,7 @@ def train(args, config_parser):
 
         if end_train:
             break
-
-        # --- LOGGING OF MODEL PARAMETERS AND GRADIENTS ---
-        # Log only self.lif.beta and self.lif.threshold for all LIF layers and weights for Conv2d layers
-        for module_name, module in model.named_modules():
-            if isinstance(module, torch.nn.Conv2d):
-                mlflow.log_metric(f"conv_weight_mean_{module_name}", module.weight.data.mean().item(), step=data.epoch)
-            if hasattr(module, 'lif'):
-                # lif.beta and lif.threshold should be nn.Parameter with shape [channels, 1, 1]
-                beta = getattr(module.lif, 'beta', None)
-                threshold = getattr(module.lif, 'threshold', None)
-                if beta is not None:
-                    mlflow.log_metric(f"lif_beta_mean_{module_name}", beta.data.mean().item(), step=data.epoch)
-                if threshold is not None:
-                    mlflow.log_metric(f"lif_threshold_mean_{module_name}", threshold.data.mean().item(), step=data.epoch)
-
+        
     mlflow.end_run()
 
 
