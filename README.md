@@ -48,18 +48,18 @@ The last command has to be called from the main folder of the repository, where 
 
 ## ONNX LIF layer generation and usage
 The generation of a new operator in ONNX requires following specific steps and to set the environment correctly. \
-In my specific case I worked on Ubuntu 24.04.3 LTS. It is mandatory to match the libtorch and pytorch versions in the envirorments; to be sure not to get any compatibility issue, I personally worked in a separate conda environment, base don python 3.9. \
+In my specific case I worked on Ubuntu 24.04.3 LTS. It is mandatory to match the libtorch and pytorch versions in the envirorments; to be sure not to get any compatibility issue, I personally worked in a separate conda environment, based on python 3.11. \
 For example, if you want to use the same versions as me:
 ```
 // pytorch
-conda create -n <env-name2> python=3.9
+conda create -n <env-name2> python=3.11
 conda activate <env-name2>
-pip install torch==2.8.0+cpu
+pip install torch==2.9.1+cpu
 
 // libtorch
-wget https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.8.0%2Bcpu.zip
-unzip libtorch-shared-with-deps-2.8.0+cpu.zip
-rm libtorch-shared-with-deps-2.8.0+cpu.zip
+wget https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.9.1%2Bcpu.zip
+unzip libtorch-shared-with-deps-2.9.1+cpu.zip
+rm libtorch-shared-with-deps-2.9.1+cpu.zip
 ```
 onnxruntime needs to be installed as well: \
 from the github page (https://github.com/microsoft/onnxruntime/releases), look for the correct version compatible with your system. 

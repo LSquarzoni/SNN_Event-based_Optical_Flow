@@ -4,7 +4,7 @@ import onnx
 import mlflow
 import os
 from brevitas import config as cf
-from brevitas.export import export_onnx_qcdq
+from brevitas.export import export_onnx_qcdq, export_qonnx
 from brevitas.graph.calibrate import calibration_mode
 from onnxsim import simplify
 import numpy as np
@@ -199,13 +199,15 @@ def export_to_onnx(args, config_parser, export_quantized=False):
             if export_quantized:
                 # Export quantized model using Brevitas
                 print("Exporting quantized model...")
-                export_onnx_qcdq(
+                export_qonnx(
                     model,
                     input_t=(event_voxel, event_cnt),
                     export_path=onnx_file_path,
+                    export_params=True,
+                    opset_version=11,
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
-                    opset_version=13,  # Use higher opset for quantization
+                    custom_opsets={"SNN_implementation": 11},
                 )
             else:
                 # Standard FP32 export
@@ -220,11 +222,6 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
                     custom_opsets={"SNN_implementation": 11},
-                    # dynamic_axes={
-                    #     'event_voxel': {0: 'batch_size'},
-                    #     'event_cnt': {0: 'batch_size'},
-                    #     'flow': {0: 'batch_size'}
-                    # }
                 )
 
             # Verify the exported model
