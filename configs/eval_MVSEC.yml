@@ -11,13 +11,13 @@ model:
         enabled: True
         type: int8 # int8 or int16
         PTQ: True # Post Training Quantization enabled or not
-        Conv_only: False
+        Conv_only: True
 
 # To generate non-trained models -----------------------------------------------------------
-    #name: LIFFireNet # for other models available, see models/model.py
+    name: LIFFireNet # for other models available, see models/model.py
     #name: LIFFireNet_short # shorter model with 6 layers instead of 8
     #name: LIFFireFlowNet # no recurrent model
-    name: LIFFireFlowNet_short # no recurrent model with only 6 layers
+    #name: LIFFireFlowNet_short # no recurrent model with only 6 layers
     encoding: cnt # voxel/cnt
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
@@ -44,7 +44,7 @@ loader:
     resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
-    gpu: 2
+    gpu: 3
 
 vis:
     enabled: False

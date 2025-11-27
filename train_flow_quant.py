@@ -2,10 +2,13 @@ import argparse
 import os
 import shutil
 import gc
+import json
+from datetime import datetime
 
 import mlflow
 import torch
 from torch.optim import *
+from torch.utils.tensorboard import SummaryWriter
 from brevitas import config as cf
 from brevitas.export import export_onnx_qcdq
 
@@ -154,6 +157,32 @@ def train_qat(args, config_parser):
     config = config_parser.combine_entries(config)
     mlflow.pytorch.autolog()
     print("MLflow dir:", mlflow.active_run().info.artifact_uri[:-9])
+    
+    # Create experiment directory with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    experiment_name = config.get("experiment", "default_experiment")
+    experiment_dir = os.path.join("runs", f"{experiment_name}_QAT_{timestamp}")
+    os.makedirs(experiment_dir, exist_ok=True)
+    
+    # Initialize TensorBoard writer
+    tensorboard_dir = os.path.join(experiment_dir, "tensorboard")
+    writer = SummaryWriter(tensorboard_dir)
+    print(f"TensorBoard logs: {tensorboard_dir}")
+    
+    # Save configuration
+    config_save = {
+        **config,
+        "prev_runid": args.prev_runid,
+        "prev_model_path": args.prev_model_path,
+        "training_type": "QAT",
+        "qat_mode": "Conv_only" if conv_only else "Full",
+        "timestamp": timestamp
+    }
+    with open(os.path.join(experiment_dir, "config.json"), "w") as f:
+        json.dump(config_save, f, indent=2)
+    
+    # Log hyperparameters to TensorBoard
+    writer.add_text("config", json.dumps(config_save, indent=2), 0)
 
     # log git diff
     save_diff("train_diff.txt")
@@ -242,9 +271,9 @@ def train_qat(args, config_parser):
     # Create model save directory based on QAT mode
     run_id = mlflow.active_run().info.run_id
     if conv_only:
-        model_save_dir = f"mlruns/0/models/LIFFN_ConvOnly_QAT"
+        model_save_dir = os.path.join(experiment_dir, "checkpoints", "ConvOnly_QAT")
     else:
-        model_save_dir = f"mlruns/0/models/LIFFN_Full_QAT"
+        model_save_dir = os.path.join(experiment_dir, "checkpoints", "Full_QAT")
     os.makedirs(model_save_dir, exist_ok=True)
     
     print(f"\nModel checkpoints will be saved to: {model_save_dir}")
@@ -256,6 +285,7 @@ def train_qat(args, config_parser):
     best_loss = 1.0e6
     end_train = False
     grads_w = []
+    global_step = 0
 
     # training loop
     data.shuffle()
@@ -274,7 +304,7 @@ def train_qat(args, config_parser):
 
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
-                mlflow.log_metric("loss", avg_train_loss, step=data.epoch)
+                writer.add_scalar("train/loss", avg_train_loss, data.epoch)
 
                 # Print epoch summary
                 print(f"Epoch {data.epoch}/{config['loader']['n_epochs']} - Train Loss: {avg_train_loss:.6f}")
@@ -324,6 +354,24 @@ def train_qat(args, config_parser):
                 data.samples = 0
                 train_loss = 0
                 data.seq_num = data.seq_num % len(data.files)
+
+                # Log model parameters and quantization info to TensorBoard
+                for module_name, module in model.named_modules():
+                    if isinstance(module, torch.nn.Conv2d):
+                        writer.add_scalar(f"weights/{module_name}/mean", module.weight.data.mean().item(), data.epoch)
+                        writer.add_scalar(f"weights/{module_name}/std", module.weight.data.std().item(), data.epoch)
+                    if hasattr(module, 'lif'):
+                        beta = getattr(module.lif, 'beta', None)
+                        threshold = getattr(module.lif, 'threshold', None)
+                        if beta is not None:
+                            writer.add_scalar(f"lif_params/{module_name}/beta_mean", beta.data.mean().item(), data.epoch)
+                        if threshold is not None:
+                            writer.add_scalar(f"lif_params/{module_name}/threshold_mean", threshold.data.mean().item(), data.epoch)
+                    # Log quantization scales if available
+                    if hasattr(module, 'weight_quant') and hasattr(module.weight_quant, 'scale'):
+                        scale = module.weight_quant.scale()
+                        if scale is not None:
+                            writer.add_scalar(f"quant_scales/{module_name}/weight_scale", scale.mean().item(), data.epoch)
 
                 # save grads to file
                 if config["vis"]["store_grads"]:
@@ -375,8 +423,17 @@ def train_qat(args, config_parser):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), config["loss"]["clip_grad"])
                 if config["vis"]["store_grads"]:
                     grads_w.append(get_grads(model.named_parameters()))
+                    
+                # Log gradients to TensorBoard (every 50 steps for efficiency)
+                if global_step % 50 == 0:
+                    for name, param in model.named_parameters():
+                        if param.grad is not None:
+                            writer.add_scalar(f"gradients/{name}/mean", param.grad.mean().item(), global_step)
+                            writer.add_scalar(f"gradients/{name}/std", param.grad.std().item(), global_step)
+                            writer.add_histogram(f"gradients/{name}/histogram", param.grad, global_step)
 
                 optimizer.step()
+                global_step += 1
                 optimizer.zero_grad()
 
                 model.detach_states()
@@ -412,6 +469,9 @@ def train_qat(args, config_parser):
         if end_train:
             break
 
+    # Close TensorBoard writer
+    writer.close()
+    
     mlflow.end_run()
     print(f"\nQuantized models saved in: {model_save_dir}")
     print("Saved files:")
@@ -419,6 +479,8 @@ def train_qat(args, config_parser):
     print("  - model_quant_latest.pth: Latest model (from last epoch)")
     print("  - *_quant_metadata.pth: Quantization metadata files")
     print("\nNote: Only best and latest models are saved to conserve memory.")
+    print(f"\nTraining complete. Results saved to: {experiment_dir}")
+    print(f"To view TensorBoard logs, run: tensorboard --logdir {experiment_dir}")
 
 
 if __name__ == "__main__":

@@ -404,8 +404,8 @@ def test_quantized(args, config_parser):
         print("="*80)
         
         # QAT MODELS:
-        model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 
-        #model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: 37dc70910aa345b19ec979f770d6a8c1
+        #model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 
+        model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: bc8a6af04f5146bd84e61df2a3b0ad0b
         
         calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 0
         

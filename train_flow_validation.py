@@ -1,10 +1,12 @@
 import argparse
 import os
 import shutil
+import json
+from datetime import datetime
 
-import mlflow
 import torch
 from torch.optim import *
+from torch.utils.tensorboard import SummaryWriter
 
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
@@ -21,9 +23,7 @@ from models.model import (
     LIFFireFlowNet,
     LIFFireFlowNet_short,
 )
-from utils.gradients import get_grads
-from utils.utils import load_model, save_csv, save_diff, save_model
-from utils.visualization import Visualization
+from utils.utils import load_model
 
 def get_next_model_folder(base_path="mlruns/0/models/"):
     index = 0
@@ -136,35 +136,42 @@ def validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True
     return avg_aae, avg_aee
 
 def train(args, config_parser):
-    mlflow.set_tracking_uri(args.path_mlflow)
-
     # configs
     config = config_parser.config
     if config["data"]["mode"] == "frames":
         print("Config error: Training pipeline not compatible with frames mode.")
         raise AttributeError
 
-    # log config
-    mlflow.set_experiment(config["experiment"])
-    mlflow.start_run()
-    mlflow.log_params(config)
-    mlflow.log_param("prev_runid", args.prev_runid)
-    mlflow.log_param("val_config_path", args.val_config)
-    mlflow.log_param("val_every_n_epochs", args.val_every_n_epochs)
+    # Create experiment directory with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    experiment_name = config.get("experiment", "default_experiment")
+    experiment_dir = os.path.join("runs", f"{experiment_name}_{timestamp}")
+    os.makedirs(experiment_dir, exist_ok=True)
+    
+    # Initialize TensorBoard writer
+    tensorboard_dir = os.path.join(experiment_dir, "tensorboard")
+    writer = SummaryWriter(tensorboard_dir)
+    print(f"Experiment directory: {experiment_dir}")
+    print(f"TensorBoard logs: {tensorboard_dir}")
+    
+    # Save configuration
     config = config_parser.combine_entries(config)
-    mlflow.pytorch.autolog()
-    print("MLflow dir:", mlflow.active_run().info.artifact_uri[:-9])
-
-    # log git diff
-    save_diff("train_diff.txt")
+    config_save = {
+        **config,
+        "prev_runid": args.prev_runid,
+        "val_config_path": args.val_config,
+        "val_every_n_epochs": args.val_every_n_epochs,
+        "timestamp": timestamp
+    }
+    with open(os.path.join(experiment_dir, "config.json"), "w") as f:
+        json.dump(config_save, f, indent=2)
+    
+    # Log hyperparameters to TensorBoard
+    writer.add_text("config", json.dumps(config_save, indent=2), 0)
 
     # initialize settings
     device = config_parser.device
     kwargs = config_parser.loader_kwargs
-
-    # visualization tool
-    if config["vis"]["enabled"]:
-        vis = Visualization(config)
 
     # data loader (training)
     data = H5Loader(config, config["model"]["num_bins"], config["model"]["round_encoding"])
@@ -224,9 +231,7 @@ def train(args, config_parser):
     train_loss = 0
     best_loss = 1.0e6
     best_val_aae = 1.0e6
-    best_val_aee = 1.0e6
     end_train = False
-    grads_w = []
     global_step = 0
     
     # Separate checkpoint tracking for loss and validation
@@ -250,7 +255,7 @@ def train(args, config_parser):
 
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
-                mlflow.log_metric("loss", avg_train_loss, step=global_step)
+                writer.add_scalar("train/loss", avg_train_loss, data.epoch)
 
                 # Run validation every N epochs
                 val_aae = None
@@ -260,8 +265,8 @@ def train(args, config_parser):
                     print(f"Running validation at epoch {data.epoch}...")
                     print(f"{'='*60}")
                     val_aae, val_aee = validate_on_mvsec(model, val_config, val_config_parser, device, verbose=True)
-                    mlflow.log_metric("val_AAE", val_aae, step=global_step)
-                    mlflow.log_metric("val_AEE", val_aee, step=global_step)
+                    writer.add_scalar("validation/AAE", val_aae, data.epoch)
+                    writer.add_scalar("validation/AEE", val_aee, data.epoch)
                     print(f"{'='*60}\n")
 
                 # Print epoch summary
@@ -282,7 +287,7 @@ def train(args, config_parser):
                                 print(f"[Loss] Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder for loss
-                        base_model_path_loss = "mlruns/0/models/LIFFN_validation_loss/"
+                        base_model_path_loss = os.path.join(experiment_dir, "checkpoints", "best_loss")
                         model_save_path_loss = os.path.join(base_model_path_loss, str(checkpoint_counter_loss))
                         
                         try:
@@ -312,11 +317,6 @@ def train(args, config_parser):
                             os.replace(temp_path, model_pth_path_loss)
                             print(f"[Loss] Model checkpoint saved to: {model_pth_path_loss} (Loss: {avg_train_loss:.6f})")
                             
-                            try:
-                                mlflow.log_artifact(model_pth_path_loss)
-                            except Exception as e:
-                                print(f"[Loss] Warning: Could not log artifact to mlflow: {e}")
-                            
                             last_checkpoint_path_loss = model_save_path_loss
                             checkpoint_counter_loss += 1
                         except Exception as e:
@@ -341,7 +341,7 @@ def train(args, config_parser):
                                 print(f"[Val AAE] Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder for validation
-                        base_model_path_val = "mlruns/0/models/LIFFN_validation_AAE/"
+                        base_model_path_val = os.path.join(experiment_dir, "checkpoints", "best_val_aae")
                         model_save_path_val = os.path.join(base_model_path_val, str(checkpoint_counter_val))
                         
                         try:
@@ -369,11 +369,6 @@ def train(args, config_parser):
                             os.replace(temp_path, model_pth_path_val)
                             print(f"[Val AAE] Model checkpoint saved to: {model_pth_path_val} (AAE: {val_aae:.4f})")
                             
-                            try:
-                                mlflow.log_artifact(model_pth_path_val)
-                            except Exception as e:
-                                print(f"[Val AAE] Warning: Could not log artifact to mlflow: {e}")
-                            
                             last_checkpoint_path_val = model_save_path_val
                             checkpoint_counter_val += 1
                         except Exception as e:
@@ -389,29 +384,23 @@ def train(args, config_parser):
                 train_loss = 0
                 data.seq_num = data.seq_num % len(data.files)
 
-                # save grads to file
-                if config["vis"]["store_grads"]:
-                    save_csv(grads_w, "grads_w.csv")
-                    grads_w = []
-
                 # finish training loop
                 if data.epoch == config["loader"]["n_epochs"] or epochs_without_improvement >= patience:
                     print(f"Stopping at epoch {data.epoch}.")
                     end_train = True
 
-                # --- LOGGING OF MODEL PARAMETERS AND GRADIENTS ---
-                # Gradients are now logged after each backward pass
-                """ # Conv2d weights and LIF params
+                # Log model parameters to TensorBoard at end of epoch
                 for module_name, module in model.named_modules():
                     if isinstance(module, torch.nn.Conv2d):
-                        mlflow.log_metric(f"conv_weight_mean_{module_name}", module.weight.data.mean().item(), step=data.epoch)
+                        writer.add_scalar(f"weights/{module_name}/mean", module.weight.data.mean().item(), data.epoch)
+                        writer.add_scalar(f"weights/{module_name}/std", module.weight.data.std().item(), data.epoch)
                     if hasattr(module, 'lif'):
                         beta = getattr(module.lif, 'beta', None)
                         threshold = getattr(module.lif, 'threshold', None)
                         if beta is not None:
-                            mlflow.log_metric(f"lif_beta_mean_{module_name}", beta.data.mean().item(), step=data.epoch)
+                            writer.add_scalar(f"lif_params/{module_name}/beta_mean", beta.data.mean().item(), data.epoch)
                         if threshold is not None:
-                            mlflow.log_metric(f"lif_threshold_mean_{module_name}", threshold.data.mean().item(), step=data.epoch) """
+                            writer.add_scalar(f"lif_params/{module_name}/threshold_mean", threshold.data.mean().item(), data.epoch)
 
             # forward pass
             x = model(inputs["event_voxel"].to(device), inputs["event_cnt"].to(device))
@@ -440,33 +429,20 @@ def train(args, config_parser):
 
                 loss.backward()
 
-                # clip and save grads
-                if config["loss"]["clip_grad"] is not None:
-                    torch.nn.utils.clip_grad.clip_grad_norm_(model.parameters(), config["loss"]["clip_grad"])
-                if config["vis"]["store_grads"]:
-                    grads_w.append(get_grads(model.named_parameters()))
-
-                # Log gradients
-                for name, param in model.named_parameters():
-                    if param.grad is not None:
-                        mlflow.log_metric(f"grad_mean_{name}", param.grad.mean().item(), step=global_step)
+                # Log gradients to TensorBoard (every 50 steps for efficiency)
+                if global_step % 50 == 0:
+                    for name, param in model.named_parameters():
+                        if param.grad is not None:
+                            writer.add_scalar(f"gradients/{name}/mean", param.grad.mean().item(), global_step)
+                            writer.add_scalar(f"gradients/{name}/std", param.grad.std().item(), global_step)
+                            writer.add_histogram(f"gradients/{name}/histogram", param.grad, global_step)
 
                 optimizer.step()
                 global_step += 1
                 optimizer.zero_grad()
 
-                # mask flow for visualization
-                flow_vis = x["flow"][-1].clone()
-                if model.mask and config["vis"]["enabled"] and config["loader"]["batch_size"] == 1:
-                    flow_vis *= loss_function.event_mask
-
                 model.detach_states()
                 loss_function.reset()
-
-                # visualize
-                with torch.no_grad():
-                    if config["vis"]["enabled"] and config["loader"]["batch_size"] == 1:
-                        vis.update(inputs, flow_vis, None)
 
             # print training info
             if config["vis"]["verbose"]:
@@ -483,8 +459,11 @@ def train(args, config_parser):
 
         if end_train:
             break
-        
-    mlflow.end_run()
+    
+    # Close TensorBoard writer
+    writer.close()
+    print(f"\nTraining complete. Results saved to: {experiment_dir}")
+    print(f"To view TensorBoard logs, run: tensorboard --logdir {experiment_dir}")
 
 
 if __name__ == "__main__":
@@ -502,13 +481,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--val_every_n_epochs",
         type=int,
-        default=1,
-        help="run validation every N epochs (default: 1)",
-    )
-    parser.add_argument(
-        "--path_mlflow",
-        default="",
-        help="location of the mlflow ui",
+        default=3,
+        help="run validation every N epochs (default: 3)",
     )
     parser.add_argument(
         "--prev_runid",

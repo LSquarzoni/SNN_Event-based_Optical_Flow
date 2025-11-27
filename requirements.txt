@@ -16,6 +16,7 @@ pre-commit==4.2
 matplotlib==3.10
 progress==1.6
 mlflow==3.2
+tensorboard
 brevitas
 netron==8.5
 onnx==1.18
