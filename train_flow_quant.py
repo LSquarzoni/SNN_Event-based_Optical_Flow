@@ -265,8 +265,31 @@ def train_qat(args, config_parser):
     model.train()
 
     # optimizer
-    optimizer = eval(config["optimizer"]["name"])(model.parameters(), lr=config["optimizer"]["lr"])
+    if config["optimizer"]["name"] == "SGD":
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=config["optimizer"]["lr"],
+            momentum=config["optimizer"].get("momentum", 0.9),
+            weight_decay=config["optimizer"].get("weight_decay", 0.0),
+            nesterov=config["optimizer"].get("nesterov", False)
+        )
+    else:
+        optimizer = eval(config["optimizer"]["name"])(
+            model.parameters(),
+            lr=config["optimizer"]["lr"]
+        )
+
     optimizer.zero_grad()
+
+    # Add learning rate scheduler
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
+    scheduler = ReduceLROnPlateau(
+        optimizer,
+        mode='min',
+        factor=0.5,  # Halve LR on plateau
+        patience=10,  # Wait 10 epochs before reducing
+        min_lr=1e-6
+    )
 
     # Create model save directory based on QAT mode
     run_id = mlflow.active_run().info.run_id
@@ -305,7 +328,12 @@ def train_qat(args, config_parser):
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
                 writer.add_scalar("train/loss", avg_train_loss, data.epoch)
-
+                
+                # Update learning rate scheduler (after epoch ends)
+                scheduler.step(avg_train_loss)
+                current_lr = optimizer.param_groups[0]['lr']
+                writer.add_scalar("train/learning_rate", current_lr, data.epoch)
+                
                 # Print epoch summary
                 print(f"Epoch {data.epoch}/{config['loader']['n_epochs']} - Train Loss: {avg_train_loss:.6f}")
 
@@ -411,6 +439,7 @@ def train_qat(args, config_parser):
 
                 # loss
                 loss = loss_function()
+                    
                 train_loss += loss.item()
 
                 # update number of loss samples seen by the network

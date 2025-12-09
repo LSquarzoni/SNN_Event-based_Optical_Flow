@@ -4,6 +4,7 @@ Adapted from UZH-RPG https://github.com/uzh-rpg/rpg_e2vid
 
 import torch
 import snntorch as snn
+from snntorch.functional import quant
 import math
 
 from .base import BaseModel
@@ -627,6 +628,58 @@ class LIFFireNet(FireNet):
     rec_neuron = SNNtorch_ConvLIFRecurrent
     residual = False
     w_scale_pred = 0.01
+    
+    def __init__(self, unet_kwargs):
+        super().__init__(unet_kwargs)
+        
+        # Apply per-layer quantization ranges based on observed membrane statistics
+        quantization_config = unet_kwargs.get("quantization", {})
+        if quantization_config.get("enabled", False) and not quantization_config.get("Conv_only", False):
+            # Per-layer membrane ranges from profiling: [min, max]
+            # Format: (min_observed, max_observed) -> we'll add margin on negative side
+            layer_ranges = {
+                'head': (-11.88, 0.79),   # Use [-12, 1] -> lower_limit=11, threshold=1
+                'G1':   (-241.15, 0.94),  # Use [-200, 1] -> lower_limit=199, threshold=1 (clip negatives)
+                'R1a':  (-9.11, 0.81),    # Use [-10, 1] -> lower_limit=9, threshold=1
+                'R1b':  (-70.35, 0.74),   # Use [-75, 1] -> lower_limit=74, threshold=1
+                'G2':   (-30.87, 0.80),   # Use [-35, 1] -> lower_limit=34, threshold=1
+                'R2a':  (-7.27, 0.80),    # Use [-8, 1] -> lower_limit=7, threshold=1
+                'R2b':  (-26.90, 0.77),   # Use [-30, 1] -> lower_limit=29, threshold=1
+            }
+            
+            # Configure each layer's quantization range
+            for layer_name, (min_obs, max_obs) in layer_ranges.items():
+                layer = getattr(self, layer_name)
+                if hasattr(layer, 'lif') and hasattr(layer.lif, 'state_quant'):
+                    # Round negative range with some margin (clip outliers)
+                    if layer_name == 'G1':
+                        # G1 has extreme negatives, use [-200, 1] instead of full [-241, 1]
+                        lower_bound = -200
+                    else:
+                        # Add ~10% margin and round up
+                        lower_bound = math.ceil(min_obs * 1.1)
+                    
+                    upper_bound = 1.0  # Fixed upper bound
+                    
+                    # Calculate SNNtorch parameters: range = [-threshold*(1+lower_limit), threshold*(1+upper_limit)]
+                    # With threshold=1.0, upper_limit=0: upper = 1.0
+                    # lower = -1.0*(1+lower_limit) -> lower_limit = -lower_bound - 1
+                    threshold = 1.0
+                    lower_limit = abs(lower_bound) - 1.0
+                    upper_limit = 0.0
+                    
+                    # Recreate state_quant with new parameters
+                    layer.lif.state_quant = quant.state_quant(
+                        num_bits=8,
+                        uniform=True,
+                        thr_centered=False,
+                        threshold=threshold,
+                        lower_limit=lower_limit,
+                        upper_limit=upper_limit
+                    )
+                    
+                    print(f"Layer {layer_name}: range [{lower_bound}, {upper_bound}] "
+                          f"(threshold={threshold}, lower_limit={lower_limit}, upper_limit={upper_limit})")
 
 
 class LIFFireNet_short(FireNet_short):
@@ -662,6 +715,8 @@ class LIFFireFlowNet_short(FireNet_short):
     rec_neuron = custom_ConvLIF
     residual = False
     w_scale_pred = 0.01
+    
+    
     
     
 class LIF(torch.nn.Module):

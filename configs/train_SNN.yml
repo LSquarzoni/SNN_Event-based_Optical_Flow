@@ -22,9 +22,8 @@ model:
     mask_output: True
     quantization:
         enabled: True
-        type: int8 # int8 or int16
         PTQ: False 
-        Conv_only: True
+        Conv_only: False
 
 spiking_neuron:
     leak: [0.0, 1.0]
@@ -35,16 +34,21 @@ spiking_neuron:
     
 loss:
     flow_regul_weight: 0.001
-    clip_grad: 100.0 # set to Null to disable
+    clip_grad: 1.0 # set to Null to disable # was 100.0
     overwrite_intermediate: False
 
 optimizer:
-    name: Adam
-    lr: 0.0002
+    #name: Adam
+    #lr: 0.0002
+    name: SGD
+    lr: 0.0001  # Lower than Adam, start conservative
+    momentum: 0.9
+    weight_decay: 0.0001  # Small regularization helps stability
+    nesterov: True  # Nesterov momentum is smoother
 
 loader:
-    n_epochs: 100
-    batch_size: 8
+    n_epochs: 50
+    batch_size: 4
     resolution: [128, 128] # H x W
     std_resolution: [128, 128] # H x W
     augment: ["Horizontal", "Vertical", "Polarity"]

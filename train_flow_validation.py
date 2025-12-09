@@ -438,6 +438,8 @@ def train(args, config_parser):
                             writer.add_histogram(f"gradients/{name}/histogram", param.grad, global_step)
 
                 optimizer.step()
+                # Log per-step training loss (indexed by optimizer step)
+                writer.add_scalar("train/loss_step", loss.item(), global_step)
                 global_step += 1
                 optimizer.zero_grad()
 
@@ -481,8 +483,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--val_every_n_epochs",
         type=int,
-        default=3,
-        help="run validation every N epochs (default: 3)",
+        default=5,
+        help="run validation every N epochs (default: 5)",
     )
     parser.add_argument(
         "--prev_runid",

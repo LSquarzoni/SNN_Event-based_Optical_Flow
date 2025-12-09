@@ -9,10 +9,10 @@ import torch.nn.functional as f
 import snntorch
 import brevitas
 from brevitas.nn import QuantConv2d, QuantTanh
+from brevitas.quant import Int8Bias
 from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
-
 
 class ConvLayer(nn.Module):
     """
@@ -50,9 +50,6 @@ class ConvLayer(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, out_channels, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
         else:
             self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, bias=bias)
@@ -68,9 +65,9 @@ class ConvLayer(nn.Module):
             if quantization_config is not None and quantization_config["enabled"]:
                 # Use quantized activations when quantization is enabled
                 if activation == "tanh":
-                    self.activation = QuantTanh()  # Create instance, not class
+                    self.activation = QuantTanh(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)  # Create instance, not class
                 elif activation == "relu":
-                    self.activation = nn.ReLU()  # For now, use regular ReLU
+                    self.activation = nn.ReLU(return_quant_tensor=False)  # For now, use regular ReLU
                 else:
                     # Fallback to non-quantized activation
                     if hasattr(torch, activation):
@@ -95,19 +92,19 @@ class ConvLayer(nn.Module):
     def forward(self, x):
         out = self.conv2d(x)
         
-        # Handle normalization - needs regular tensor
+        """ # Handle normalization - needs regular tensor
         if self.norm in ["BN", "IN"]:
             if hasattr(out, 'value'):
                 out = out.value
-            out = self.norm_layer(out)
+            out = self.norm_layer(out) """
 
         # Apply activation - keep QuantTensor if using quantized activation
         if self.activation is not None:
             out = self.activation(out)
         
-        # Extract value at the very end, after all quantized operations
+        """ # Extract value at the very end, after all quantized operations
         if hasattr(out, 'value'):
-            out = out.value
+            out = out.value """
 
         return out
 

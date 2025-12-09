@@ -2,6 +2,8 @@ from torch.optim import *
 from torchinfo import summary
 import torch
 import numpy as np
+import json
+import os
 
 from brevitas.graph.calibrate import calibration_mode
 from brevitas import config as cf
@@ -23,6 +25,162 @@ from utils.iwe import compute_pol_iwe
 from utils.utils import load_model, load_quantized_model, create_model_dir
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization
+
+
+def print_quantization_info(model, config):
+    """
+    Print detailed information about what is being quantized in the model.
+    Shows Conv layers, LIF layers, their parameters, and quantization status.
+    """
+    print("\n" + "="*100)
+    print("QUANTIZATION ANALYSIS")
+    print("="*100)
+    
+    # Configuration summary
+    quant_config = config["model"].get("quantization", {})
+    print(f"\nConfiguration:")
+    print(f"  - Quantization enabled: {quant_config.get('enabled', False)}")
+    print(f"  - PTQ mode: {quant_config.get('PTQ', False)}")
+    print(f"  - Conv-only mode: {quant_config.get('Conv_only', False)}")
+    print(f"  - Quantization type: {quant_config.get('type', 'N/A')}")
+    
+    # Count different component types
+    total_conv_layers = 0
+    total_lif_layers = 0
+    quant_conv_layers = 0
+    quant_lif_layers = 0
+    
+    print("\n" + "-"*100)
+    print(f"{'Layer Name':<40} {'Type':<25} {'Input→Output':<20} {'Quantized':<15}")
+    print("-"*100)
+    
+    for name, module in model.named_modules():
+        # Skip the top-level model and intermediate containers
+        if name == '' or 'pred' in name.lower():
+            continue
+            
+        # Check for Convolutional layers
+        if isinstance(module, (torch.nn.Conv2d, torch.nn.ConvTranspose2d)):
+            from brevitas.nn import QuantConv2d
+            is_quant = isinstance(module, QuantConv2d)
+            
+            total_conv_layers += 1
+            if is_quant:
+                quant_conv_layers += 1
+            
+            in_ch = module.in_channels
+            out_ch = module.out_channels
+            k_size = module.kernel_size if isinstance(module.kernel_size, int) else module.kernel_size[0]
+            
+            layer_type = "QuantConv2d" if is_quant else "Conv2d"
+            quant_status = "✓ QUANTIZED" if is_quant else "✗ FP32"
+            
+            print(f"{name:<40} {layer_type:<25} {in_ch}→{out_ch} (k={k_size}){'':<5} {quant_status:<15}")
+            
+            # Print quantization details for QuantConv2d
+            if is_quant:
+                if hasattr(module, 'weight_quant'):
+                    print(f"{'  └─ Weights':<40} {'Quantizer':<25} {'':<20} {'Int8 (per-tensor)':<15}")
+                if hasattr(module, 'input_quant'):
+                    print(f"{'  └─ Input':<40} {'Quantizer':<25} {'':<20} {'Int8 activations':<15}")
+                if hasattr(module, 'output_quant'):
+                    print(f"{'  └─ Output':<40} {'Quantizer':<25} {'':<20} {'Int8 activations':<15}")
+        
+        # Check for LIF neuron layers
+        elif hasattr(module, 'lif') and hasattr(module, 'ff'):
+            import snntorch as snn
+            from brevitas.nn import QuantConv2d
+            
+            total_lif_layers += 1
+            
+            # Check if Conv part is quantized
+            conv_is_quant = isinstance(module.ff, QuantConv2d)
+            
+            # Check if LIF state is quantized
+            lif_state_quant = hasattr(module, 'q_lif') and module.q_lif is not None
+            
+            if conv_is_quant or lif_state_quant:
+                quant_lif_layers += 1
+            
+            # Get dimensions
+            in_ch = module.input_size
+            out_ch = module.hidden_size
+            
+            # Determine layer type
+            is_recurrent = hasattr(module, 'rec')
+            layer_type = "ConvLIF+Rec" if is_recurrent else "ConvLIF"
+            
+            quant_parts = []
+            if conv_is_quant:
+                quant_parts.append("Conv")
+            if lif_state_quant:
+                quant_parts.append("LIF-state")
+            
+            if quant_parts:
+                quant_status = f"✓ {'+'.join(quant_parts)}"
+            else:
+                quant_status = "✗ FP32"
+            
+            print(f"{name:<40} {layer_type:<25} {in_ch}→{out_ch}{'':<12} {quant_status:<15}")
+            
+            # Print LIF parameter details
+            if hasattr(module, 'lif'):
+                lif = module.lif
+                beta_shape = lif.beta.shape if hasattr(lif, 'beta') else "N/A"
+                thresh_shape = lif.threshold.shape if hasattr(lif, 'threshold') else "N/A"
+                
+                # Check if parameters are per-channel
+                per_channel = False
+                if hasattr(lif, 'beta'):
+                    beta_numel = lif.beta.numel()
+                    if beta_numel == out_ch:
+                        per_channel = True
+                
+                param_type = "per-channel" if per_channel else f"shape={beta_shape}"
+                print(f"{'  └─ LIF params (β,θ)':<40} {param_type:<25} {'':<20} {'Learnable':<15}")
+                
+                if lif_state_quant:
+                    print(f"{'  └─ Membrane state':<40} {'State Quantizer':<25} {'':<20} {'Int8 (8-bit)':<15}")
+                else:
+                    print(f"{'  └─ Membrane state':<40} {'FP32':<25} {'':<20} {'Not quantized':<15}")
+            
+            # For recurrent layers, show recurrent conv
+            if is_recurrent and hasattr(module, 'rec'):
+                rec_is_quant = isinstance(module.rec, QuantConv2d)
+                rec_status = "✓ Quantized" if rec_is_quant else "✗ FP32"
+                print(f"{'  └─ Recurrent Conv':<40} {'QuantConv2d' if rec_is_quant else 'Conv2d':<25} {out_ch}→{out_ch}{'':<12} {rec_status:<15}")
+    
+    print("-"*100)
+    print(f"\nSummary:")
+    print(f"  Total Conv layers: {total_conv_layers}")
+    print(f"  Quantized Conv layers: {quant_conv_layers}")
+    print(f"  Total LIF layers: {total_lif_layers}")
+    print(f"  LIF layers with quantization: {quant_lif_layers}")
+    print(f"  Coverage: Conv {quant_conv_layers}/{total_conv_layers} ({100*quant_conv_layers/max(total_conv_layers,1):.1f}%), " +
+          f"LIF {quant_lif_layers}/{total_lif_layers} ({100*quant_lif_layers/max(total_lif_layers,1):.1f}%)")
+    
+    # Additional warnings
+    print(f"\nNotes:")
+    if quant_config.get('Conv_only', False):
+        print(f"  ⚠ Conv-only mode: LIF neuron states remain in FP32 (mixed precision)")
+    if quant_config.get('PTQ', False):
+        print(f"  ℹ PTQ mode: Model will be calibrated using sample data")
+    else:
+        print(f"  ℹ QAT mode: Model was quantized during training")
+    
+    # Check per-channel parameters
+    for name, module in model.named_modules():
+        if hasattr(module, 'lif'):
+            lif = module.lif
+            if hasattr(lif, 'beta'):
+                beta_shape = lif.beta.shape
+                if len(beta_shape) == 3 and beta_shape[0] > 1:
+                    print(f"  ✓ Per-channel LIF parameters detected: beta shape = {beta_shape}")
+                    print(f"    (SNNtorch quantization typically doesn't support per-channel LIF params,")
+                    print(f"     but they are preserved as learnable FP32 parameters)")
+                    break
+    
+    print("="*100 + "\n")
 
 
 def calibrate_model_ptq(calibration_loader, model, device, num_batches=50, calibrate_conv_only=False, calibrate_states_only=False):
@@ -246,10 +404,57 @@ def test_quantized(args, config_parser):
        - All layers already quantized during training
        - Direct evaluation
     """
-    mlflow.set_tracking_uri(args.path_mlflow)
-
-    run = mlflow.get_run(args.runid)
-    config = config_parser.merge_configs(run.data.params)
+    
+    # Determine if loading from TensorBoard or MLflow
+    use_tensorboard = args.model_path and not args.runid
+    use_mlflow = args.runid is not None
+    
+    if use_tensorboard:
+        print("Loading model from TensorBoard directory...")
+        # Extract experiment directory from model path
+        # e.g., "runs/Default_QAT_20251202_095245_ConvOnly_finetuning_0.72/checkpoints/ConvOnly_QAT/model_quant_best.pth"
+        model_path = args.model_path
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file not found: {model_path}")
+        
+        # Find config.json in the experiment directory
+        experiment_dir = model_path.split('/checkpoints/')[0] if '/checkpoints/' in model_path else os.path.dirname(os.path.dirname(model_path))
+        config_file = os.path.join(experiment_dir, 'config.json')
+        
+        if not os.path.exists(config_file):
+            raise FileNotFoundError(f"Config file not found: {config_file}. Expected in TensorBoard experiment directory.")
+        
+        print(f"Loading config from: {config_file}")
+        with open(config_file, 'r') as f:
+            saved_config = json.load(f)
+        
+        # Merge with base config from YAML, but prioritize evaluation-specific settings
+        # Start with evaluation config from YAML
+        config = config_parser.config.copy()
+        
+        # Selectively update with training config - only model architecture and quantization settings
+        # Keep evaluation-specific settings (loader, data paths, metrics, visualization) from YAML
+        preserve_keys = ["loader", "data", "metrics", "vis"]  # Keep these from eval config
+        for key, value in saved_config.items():
+            if key not in preserve_keys:
+                config[key] = value
+            elif key == "model":
+                # For model, merge carefully - take architecture from training but keep eval overrides
+                if isinstance(value, dict) and isinstance(config.get(key), dict):
+                    config[key].update(value)
+                else:
+                    config[key] = value
+        
+        print("Using evaluation config for: loader, data, metrics, visualization")
+        print("Using training config for: model architecture, quantization settings")
+        
+    elif use_mlflow:
+        print("Loading model from MLflow...")
+        mlflow.set_tracking_uri(args.path_mlflow)
+        run = mlflow.get_run(args.runid)
+        config = config_parser.merge_configs(run.data.params)
+    else:
+        raise ValueError("Must provide either --model_path (TensorBoard) or --runid (MLflow)")
 
     # configs
     if config["loader"]["batch_size"] > 1:
@@ -300,15 +505,23 @@ def test_quantized(args, config_parser):
 
     if not args.debug:
         # create directory for inference results
-        path_results = create_model_dir(args.path_results, args.runid)
+        if use_tensorboard:
+            # For TensorBoard models, use model path as identifier
+            model_identifier = os.path.basename(os.path.dirname(args.model_path))
+            path_results = os.path.join(args.path_results, model_identifier)
+            os.makedirs(path_results, exist_ok=True)
+            eval_id = model_identifier
+            print(f"Results will be saved to: {path_results}")
+        else:
+            # For MLflow models, use existing logic
+            path_results = create_model_dir(args.path_results, args.runid)
+            eval_id = log_config(path_results, args.runid, config)
         
-        # store validation settings (this will start/end an mlflow run)
-        eval_id = log_config(path_results, args.runid, config)
-        
-        # Now start a new run for logging metrics
-        mlflow.set_experiment(config["experiment"])
-        mlflow.start_run()
-        mlflow.log_params(config)
+        # Start MLflow run only if using MLflow
+        if use_mlflow:
+            mlflow.set_experiment(config["experiment"])
+            mlflow.start_run()
+            mlflow.log_params(config)
     else:
         path_results = None
         eval_id = -1
@@ -337,6 +550,11 @@ def test_quantized(args, config_parser):
     print(f"Initializing quantized model: {config['model']['name']}")
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
     
+    # Print quantization info for the initialized model
+    print("\n" + "="*80)
+    print("INITIAL MODEL STRUCTURE")
+    print("="*80)
+    print_quantization_info(model, config)
     
     # ========================================================================
     # CASE 1: PTQ from FP32 model
@@ -347,19 +565,30 @@ def test_quantized(args, config_parser):
         print("="*80)
         print("\nLoading FP32 pre-trained model...")
         
-        # FP32 MODELS:
-        model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
-        #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
-        #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
-        #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
-        #model_path_dir = "mlruns/0/models/LIFFN_short/39/model.pth" # runid: bb4ece23356043fca1204176cb270c7d
-        #model_path_dir = "mlruns/0/models/LIFFN_16ch_short/33/model.pth" # runid: 7b3c8e69807d44c79abc682e96ff57e1
-        #model_path_dir = "mlruns/0/models/LIFFN_8ch_short/23/model.pth" # runid: b61534e5119a4704a66638c1ba78f308
-        #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
+        # Determine model path
+        if use_tensorboard and args.model_path:
+            model_path_dir = args.model_path
+        else:
+            # FP32 MODELS (default MLflow paths):
+            model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+            #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
+            #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
+            #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
+            #model_path_dir = "mlruns/0/models/LIFFN_short/39/model.pth" # runid: bb4ece23356043fca1204176cb270c7d
+            #model_path_dir = "mlruns/0/models/LIFFN_16ch_short/33/model.pth" # runid: 7b3c8e69807d44c79abc682e96ff57e1
+            #model_path_dir = "mlruns/0/models/LIFFN_8ch_short/23/model.pth" # runid: b61534e5119a4704a66638c1ba78f308
+            #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
         
         print(f"Loading weights from: {model_path_dir}")
         print("Note: Using strict=False to handle architecture differences")
-        model = load_model(args.runid, model, device, model_path_dir=model_path_dir, strict=False)
+        runid_for_load = "" if use_tensorboard else args.runid
+        model = load_model(runid_for_load, model, device, model_path_dir=model_path_dir, strict=False)
+        
+        # Print model state after loading FP32 checkpoint but before calibration
+        print("\n" + "="*80)
+        print("MODEL AFTER LOADING FP32 CHECKPOINT (Before Calibration)")
+        print("="*80)
+        print_quantization_info(model, config)
         
         # Calibration for PTQ
         calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 50
@@ -376,6 +605,12 @@ def test_quantized(args, config_parser):
             print("  ✓ LIF layers: Will be calibrated and quantized")
             model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches,
                                        calibrate_conv_only=False, calibrate_states_only=False)
+        
+        # Print model state after calibration
+        print("\n" + "="*80)
+        print("MODEL AFTER PTQ CALIBRATION")
+        print("="*80)
+        print_quantization_info(model, config)
         
         # CRITICAL: Reset dataloader after calibration
         print("\nResetting dataloader for full dataset evaluation...")
@@ -403,9 +638,13 @@ def test_quantized(args, config_parser):
             print("CASE 3: Full QAT (No Calibration Needed)")
         print("="*80)
         
-        # QAT MODELS:
-        #model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 
-        model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: bc8a6af04f5146bd84e61df2a3b0ad0b
+        # Determine model path
+        if use_tensorboard and args.model_path:
+            model_path_dir = args.model_path
+        else:
+            # QAT MODELS (default MLflow paths):
+            #model_path_dir = "mlruns/0/models/LIFFN_Full_QAT/model_quant_best.pth" # runid: 
+            model_path_dir = "mlruns/0/models/LIFFN_ConvOnly_QAT/model_quant_best.pth" # runid: bc8a6af04f5146bd84e61df2a3b0ad0b
         
         calibration_batches = args.calibration_batches if hasattr(args, 'calibration_batches') else 0
         
@@ -477,6 +716,12 @@ def test_quantized(args, config_parser):
             print(f"\n  Moving model to {device}...")
             model = model.to(device)
             
+            # Print model state after loading Conv-only QAT checkpoint
+            print("\n" + "="*80)
+            print("MODEL AFTER LOADING CONV-ONLY QAT CHECKPOINT (Before LIF Calibration)")
+            print("="*80)
+            print_quantization_info(model, config)
+            
             # Step 3: Apply PTQ calibration to LIF only
             print(f"\n✓ Step 3: Applying PTQ calibration to LIF layers ({calibration_batches} batches)...")
             print("  ✓ Conv quantizers: Keep trained QAT metadata (no recalibration)")
@@ -499,6 +744,12 @@ def test_quantized(args, config_parser):
             
             model = calibrate_model_ptq(dataloader, model, device, num_batches=calibration_batches,
                                        calibrate_conv_only=False, calibrate_states_only=True)
+            
+            # Print model state after LIF calibration
+            print("\n" + "="*80)
+            print("MODEL AFTER LIF PTQ CALIBRATION (Hybrid Mode Complete)")
+            print("="*80)
+            print_quantization_info(model, config)
             
             # Reset dataloader
             print("\nResetting dataloader for full dataset evaluation...")
@@ -538,6 +789,12 @@ def test_quantized(args, config_parser):
             print(f"\nMoving model to {device}...")
             model = model.to(device)
             
+            # Print model state for Conv-only QAT (mixed precision)
+            print("\n" + "="*80)
+            print("MODEL LOADED: CONV-ONLY QAT (Mixed Precision)")
+            print("="*80)
+            print_quantization_info(model, config)
+            
             print("\nMixed Precision Configuration:")
             print("  ✓ Convolutions: INT8 (QAT trained)")
             print("  ✓ LIF layers: FP32 (no quantization)")
@@ -568,6 +825,12 @@ def test_quantized(args, config_parser):
             if calibration_batches > 0:
                 print("\nWARNING: Calibration requested but not needed for Full QAT!")
                 print("Skipping calibration to preserve trained quantizers...")
+            
+            # Print model state for Full QAT
+            print("\n" + "="*80)
+            print("MODEL LOADED: FULL QAT")
+            print("="*80)
+            print_quantization_info(model, config)
             
             print("\nFully Quantized Configuration:")
             print("  ✓ Convolutions: INT8 (QAT trained)")
@@ -716,7 +979,14 @@ def test_quantized(args, config_parser):
         
         # Save results to file
         if not args.debug:
-            log_results(args.runid, results, path_results, eval_id)
+            if use_mlflow:
+                log_results(args.runid, results, path_results, eval_id)
+            else:
+                # For TensorBoard, save results directly
+                results_file = os.path.join(path_results, 'eval_results.json')
+                with open(results_file, 'w') as f:
+                    json.dump(results, f, indent=2)
+                print(f"Results saved to: {results_file}")
     
     # Print final results
     print("\n" + "="*80)
@@ -753,8 +1023,8 @@ def test_quantized(args, config_parser):
                     print(f"  Percent: {avg_percent:.2f}%")
     print("="*80)
 
-    # log to mlflow
-    if not args.debug and "metrics" in config.keys():
+    # log to mlflow (only if using mlflow)
+    if not args.debug and use_mlflow and "metrics" in config.keys():
         for metric in config["metrics"]["name"]:
             if metric in results:
                 metric_values = [float(v) for v in results[metric].values()]
@@ -815,13 +1085,13 @@ Evaluation Modes:
     )
     parser.add_argument(
         "--runid",
-        required=True,
-        help="MLflow run ID of the model to evaluate",
+        default=None,
+        help="MLflow run ID of the model to evaluate (for MLflow models)",
     )
     parser.add_argument(
         "--model_path",
         default="",
-        help="Optional: Direct path to model checkpoint",
+        help="Path to model checkpoint. Use for TensorBoard models (e.g., runs/Default_QAT_20251202_095245/checkpoints/ConvOnly_QAT/model_quant_best.pth). For MLflow models, use --runid instead.",
     )
     parser.add_argument(
         "--calibration_batches",
@@ -841,6 +1111,15 @@ Evaluation Modes:
     )
     
     args = parser.parse_args()
+    
+    # Validate that either runid or model_path is provided
+    if not args.runid and not args.model_path:
+        print("Error: Must provide either --runid (for MLflow) or --model_path (for TensorBoard)")
+        exit(1)
+    
+    if args.runid and args.model_path:
+        print("Warning: Both --runid and --model_path provided. Using --model_path (TensorBoard mode)")
+        args.runid = None  # Prioritize TensorBoard
 
     # Load and validate config
     config_parser = YAMLParser(args.config)
@@ -863,7 +1142,10 @@ Evaluation Modes:
     print("Quantized Model Evaluation")
     print("="*80)
     print(f"Config: {args.config}")
-    print(f"Run ID: {args.runid}")
+    if args.runid:
+        print(f"Source: MLflow (Run ID: {args.runid})")
+    else:
+        print(f"Source: TensorBoard (Path: {args.model_path})")
     
     if use_ptq:
         print(f"Base: PTQ from FP32 model")

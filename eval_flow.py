@@ -109,45 +109,9 @@ def test(args, config_parser):
         vis = Visualization(config, eval_id=eval_id, path_results=path_results, vis_type=vis_type)
 
     # model initialization and settings
-    # Old LIF implementation
-    #model_path_dir = "mlruns/0/models/LIFFireNet/31/data/model.pth" # runid: fa926a65776541a987457014f5121f34          MODEL PATH FROM MY TRAINING ---------------------------
-    #model_path_dir = "mlruns/0/models/LIFFireNet_16ch/35/data/model.pth" # runid: 06a926f3291b489bba49a06e6b449ddc
-    #model_path_dir = "mlruns/0/models/LIFFireNet_short/29/data/model.pth" # runid: 0067d60f138d4c9d9995779f1ace733b
-    #model_path_dir = "mlruns/0/models/LIFFireNet_short_16ch/35/data/model.pth" # runid: 5551560ffa584c3c9010b2afb281de95
-    
-    # SNNtorch LIF implementation
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch/26/model.pth" # runid: 3ab96c99fced453e91ed83b5e48ac3ca
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch/29/model.pth" # runid: 0e2e489c048e4a9c80553ad7cc84e1c2
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch/19/model.pth" # runid: f9c47172b72242198cf80f3887109add
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch/21/model.pth" # runid: b6062d12fd79418cab1af2f40adb0069
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short/37/model.pth" # runid: 46e0c3f20db543b0afbceeac7786291d
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch/30/model.pth" # runid: cbbdfd39634146b0a1dfe27a847b1673
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch/25/model.pth" # runid: d743287c54bd426bba33e44893f2d274
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch/6/model.pth" # runid: d0510780ea534f239b15bc3054a42d63
-    #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch/34/model.pth" # runid: 4ea02c571b7847bbacfddb80afc2e29c
-    #model_path_dir = "mlruns/0/models/LIFEVFlowNet_SNNtorch//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64/19/model.pth" # runid: 55d166ec1f2c42d2b942eb059afa4bf3
-    
-    # Validation dataset introduced (MVSEC)
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val_test/10/model.pth" # runid: 9a986ea4816d441b9a1c59fde7d465c6
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_16ch_val/8/model.pth" # runid: 4f0442fb00b849cfbe9964d2d5e6cc73
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_8ch_val/6/model.pth" # runid: e245cae664994400a3cdf5c2d9d293e9
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_4ch_val/6/model.pth" # runid: efabb5994ea547318713938f23ffaeb0
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_val/7/model.pth" # runid: 4966e0cbe61c4416876bd598e44b1365
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_16ch_val/10/model.pth" # runid: 3c93bf4c5a984a6f898d196274eac2d5
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_8ch_val/8/model.pth" # runid: 08a62701f3294bdfa9920dcdd2f3cbca
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_short_4ch_val/8/model.pth" # runid: 592b1cc87676495a8b013b270c867b10
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_64x64_val/8/model.pth" # runid: d086c4dc395c4bf4879fb1dbbfc553e5
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_32x32_val/9/model.pth" # runid: 41d3fcf3220f4149ac8009da0490b4cd
-    #model_path_dir = "mlruns/0/models/LIFFireFlowNet_SNNtorch_val/10/model.pth" # runid: 6ed87a492f984c9fb835ab25d740b30f
-    
-    # 10% validation from training dataset
-    #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
     
     # FINAL MODELS: simplification of the LIF code
     model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
-    #model_path_dir = "mlruns/0/models/LIFFN_best/19/model.pth" # runid: 93506e28ff064558a20d9c476364badd
-    #model_path_dir = "mlruns/0/models/LIFFN_64x64_trained/15/model.pth" # runid: 599f00b5567e40929eeb4cd07b8a9430
     #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
     #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
     #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
@@ -155,9 +119,6 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_16ch_short/33/model.pth" # runid: 7b3c8e69807d44c79abc682e96ff57e1
     #model_path_dir = "mlruns/0/models/LIFFN_8ch_short/23/model.pth" # runid: b61534e5119a4704a66638c1ba78f308
     #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
-    #model_path_dir = "mlruns/0/models/LIFFN_newIN/19/model.pth" # runid: 62d2987219a6417e94cb6ac3850aadb9
-    #model_path_dir = "mlruns/0/models/LIFFN_newOUT/38/model.pth" # runid: 14153d8b5da745a09eb1d20bc275dc46
-    #model_path_dir = "mlruns/0/models/LIFFN_fullREC/5/model.pth" # runid: 83a70940b6d04e1d9225e84a88c64c6d
     
     #model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
     #model_path_dir = "mlruns/0/models/LIFFFN_16ch/23/model.pth" # runid: 5263c20879994d469904e950f8835953
@@ -167,8 +128,6 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_16ch_short/24/model.pth" # runid: 9b45bea0c1cd481a94a046e71793ef32
     #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short/11/model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
-    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newIN/8/model.pth" # runid: 98efd73ac99646c8bd35e387217a7d94
-    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short_newOUT/25/model.pth" # runid: bf537ca6bde14f8e91e59590bfc2ca94
     
     # VALIDATED TRAINING:
     #model_path_dir = "mlruns/0/models/LIFFN_validation_loss/" # runid: 

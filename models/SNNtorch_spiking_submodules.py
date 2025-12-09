@@ -12,6 +12,7 @@ from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
 
 import models.spiking_util as spiking
 
+
 class SNNtorch_ConvReLU(nn.Module):
     """
     Dummy convolutional block with ReLU activation for ONNX export.
@@ -102,12 +103,17 @@ class SNNtorch_ConvLIF(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
-            # State quantization for membrane potential
-            self.q_lif = quant.state_quant(num_bits=8, uniform=True, thr_centered=False)
+            # State quantization: range = [-threshold*(1+lower_limit), threshold*(1+upper_limit)]
+            # Setting threshold=1.0, lower_limit=x, upper_limit=0.0 → range=[-x, 1]
+            self.q_lif = quant.state_quant(
+                num_bits=8,
+                uniform=True,
+                thr_centered=False,
+                threshold=1.0,
+                lower_limit=249.0,
+                upper_limit=0.0
+            )
             self.lif = snn.Leaky(
                 beta=beta_init,
                 threshold=threshold_init,
@@ -129,9 +135,6 @@ class SNNtorch_ConvLIF(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.lif = snn.Leaky(
                 beta=beta_init,
@@ -258,9 +261,6 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.rec = QuantConv2d(
                 hidden_size,
@@ -272,12 +272,17 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=True,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
-            # State quantization for membrane potential
-            self.q_lif = quant.state_quant(num_bits=8, uniform=True, thr_centered=False)
+            # State quantization: range = [-threshold*(1+lower_limit), threshold*(1+upper_limit)]
+            # Setting threshold=1.0, lower_limit=x, upper_limit=0.0 → range=[-x, 1]
+            self.q_lif = quant.state_quant(
+                num_bits=8,
+                uniform=True,
+                thr_centered=False,
+                threshold=1.0,
+                lower_limit=249.0,
+                upper_limit=0.0
+            )
             self.lif = snn.Leaky(
                 beta=beta_init,
                 threshold=threshold_init,
@@ -298,9 +303,6 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.rec = QuantConv2d(
                 hidden_size,
@@ -312,9 +314,6 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
             )
             self.lif = snn.Leaky(
                 beta=beta_init,
