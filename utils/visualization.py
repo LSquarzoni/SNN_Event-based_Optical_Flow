@@ -37,12 +37,13 @@ class Visualization:
                 os.makedirs(self.store_dir)
             self.store_file = None
 
-    def update(self, inputs, flow, iwe, events_window=None, masked_window_flow=None, iwe_window=None):
+    def update(self, inputs, flow, iwe, events_window=None, masked_window_flow=None, iwe_window=None, masked_window_gtflow=None):
         """
         Live visualization.
         :param inputs: dataloader dictionary
         :param flow: [batch_size x 2 x H x W] optical flow map
         :param iwe: [batch_size x 1 x H x W] image of warped events
+        :param masked_window_gtflow: [batch_size x 2 x H x W] masked ground truth optical flow for eval window
         """
 
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
@@ -216,7 +217,7 @@ class Visualization:
 
         cv2.waitKey(1)
 
-    def store(self, inputs, flow, iwe, sequence, events_window=None, masked_window_flow=None, iwe_window=None, ts=None):
+    def store(self, inputs, flow, iwe, sequence, events_window=None, masked_window_flow=None, iwe_window=None, ts=None, masked_window_gtflow=None):
         """
         Store rendered images.
         :param inputs: dataloader dictionary
@@ -224,6 +225,7 @@ class Visualization:
         :param iwe: [batch_size x 1 x H x W] image of warped events
         :param sequence: filename of the event sequence under analysis
         :param ts: timestamp associated with rendered files (default = None)
+        :param masked_window_gtflow: [batch_size x 2 x H x W] masked ground truth optical flow for eval window
         """
 
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
@@ -378,20 +380,30 @@ class Visualization:
             # Vector-based visualization
             gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
             gt_y = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 1] if gtflow is not None else None
-            masked_vec_img = self.flow_to_vector(
-                masked_window_flow_npy[:, :, 0],
-                masked_window_flow_npy[:, :, 1],
-                type="sparse",
-                center=True,
-                gt_flow_x=gt_x,
-                gt_flow_y=gt_y,
-                overlay_gt=True if gtflow is not None else False,
-                fixed_length=(0.45 * max(masked_h, masked_w)),
-            )
+            
             if self.store_type == "image":
+                # For images, use centered single vector with GT overlay
+                masked_vec_img = self.flow_to_vector(
+                    masked_window_flow_npy[:, :, 0],
+                    masked_window_flow_npy[:, :, 1],
+                    type="sparse",
+                    center=True,
+                    gt_flow_x=gt_x,
+                    gt_flow_y=gt_y,
+                    overlay_gt=True if gtflow is not None else False,
+                    fixed_length=(0.45 * max(masked_h, masked_w)),
+                )
                 filename = path_to + "masked_flow_vec/%09d.png" % self.img_idx
                 cv2.imwrite(filename, masked_vec_img)
             elif self.store_type == "video":
+                # For videos, use grid of white vectors showing average flow per region
+                masked_vec_img = self.flow_to_vector(
+                    masked_window_flow_npy[:, :, 0],
+                    masked_window_flow_npy[:, :, 1],
+                    type="grid",
+                    grid_size=6,  # 6x6 = 36 regions
+                    force_white=True,
+                )
                 if "masked_flow_vec" not in self.video_writers:
                     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                     fps = 30
@@ -404,6 +416,9 @@ class Visualization:
             masked_vec_frame = masked_vec_img
 
         # ground-truth optical flow (gradient-based)
+        # Use masked_window_gtflow for stitched output if available, otherwise use full gtflow
+        gtflow_for_stitched = masked_window_gtflow if masked_window_gtflow is not None else gtflow
+        
         if gtflow is not None:
             gtflow = gtflow.detach()
             gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
@@ -419,10 +434,17 @@ class Visualization:
                     fps = 30
                     shape = (gtflow_w, gtflow_h)
                     self.video_writers["gtflow"] = cv2.VideoWriter(path_to + "gtflow/gtflow.mp4", fourcc, fps, shape)
-                self.video_writers["gtflow"].write(gtflow_img)                
-
-            # store frame for stitched output
-            gtflow_frame = gtflow_img
+                self.video_writers["gtflow"].write(gtflow_img)
+        
+        # Create frame for stitched output using masked GT flow if available
+        if gtflow_for_stitched is not None:
+            gtflow_for_stitched = gtflow_for_stitched.detach()
+            gtflow_stitch_h, gtflow_stitch_w = gtflow_for_stitched.shape[2], gtflow_for_stitched.shape[3]
+            gtflow_stitch_npy = gtflow_for_stitched.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_stitch_h, gtflow_stitch_w, 2))
+            gtflow_frame = self.flow_to_image(gtflow_stitch_npy[:, :, 0], gtflow_stitch_npy[:, :, 1])
+            gtflow_frame = cv2.cvtColor(gtflow_frame, cv2.COLOR_RGB2BGR)
+        else:
+            gtflow_frame = None
 
         # Create stitched output (four panels side-by-side). If any panel is missing, replace it with a black placeholder.
         # Order: input events → ground truth → masked flow (gradient) → masked flow (vectors with dual arrows)
@@ -539,16 +561,18 @@ class Visualization:
         return (255 * flow_rgb).astype(np.uint8)
     
     @staticmethod
-    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2, center=False, gt_flow_x=None, gt_flow_y=None, overlay_gt=True, fixed_length=None):
+    def flow_to_vector(flow_x, flow_y, type="dense", step=12, scale=6.0, min_magnitude=0.2, center=False, gt_flow_x=None, gt_flow_y=None, overlay_gt=True, fixed_length=None, force_white=False, grid_size=8):
         """
         Use the optical flow to generate a matrix of vectors representing the direction 
         and magnitude of the optical flows.
         :param flow_x: [H x W x 1] horizontal optical flow component
         :param flow_y: [H x W x 1] vertical optical flow component
-        :param type: "dense" for ground truth, "sparse" for estimated optical flow
-        :param step: Sampling step for vector representation
+        :param type: "dense" for ground truth, "sparse" for sampled points, "grid" for averaged regions
+        :param step: Sampling step for vector representation (used when type="sparse")
         :param scale: scaling factor for vector length
         :param min_magnitude: minimum magnitude to draw a vector
+        :param grid_size: number of divisions per dimension for grid mode (e.g., 12 = 12x12 = 144 regions)
+        :param force_white: if True, draw all vectors in white (ignores color coding)
         :return img: [H x W x 3] vector-encoded optical flow image
         """
         # center: if True, draw a single arrow at the image center corresponding
@@ -559,6 +583,9 @@ class Visualization:
             min_magnitude = 0.01
             thickness = 3
             tip_length = 0.3
+        elif type == "grid":
+            thickness = 1
+            tip_length = 0.15
         else:
             thickness = 3
             tip_length = 0.3
@@ -618,7 +645,7 @@ class Visualization:
             frac = np.clip(avg_mag / combined_max, 0.0, 1.0)
 
             # maximum drawable length (pixels) -- keep it within frame
-            max_len = int(0.45 * min(H, W))
+            max_len = int(0.85 * min(H, W))
 
             # If a fixed length is requested, use it; otherwise use fraction of max_len
             if fixed_length is not None:
@@ -677,27 +704,129 @@ class Visualization:
             # Use the ORIGINAL (non-inverted) flow direction for color so
             # the color wheel represents the true flow direction even though
             # the arrow geometry is inverted for visualization.
-            ang = np.arctan2(avg_dy, avg_dx) + np.pi
-            ang *= 1.0 / np.pi / 2.0
-            # Robustly compute the value (brightness) channel. If the field is
-            # uniform (mag_range == 0) but non-zero, show relative brightness
-            # as avg_mag / max_mag so arrows are visible instead of black.
-            if mag_range != 0.0:
-                v = (avg_mag - min_mag) / mag_range
+            if force_white:
+                arrow_color = (255, 255, 255)  # White in BGR
             else:
-                v = (avg_mag / max_mag) if max_mag > 0.0 else 0.0
-            # Boost brightness for better visibility (apply power < 1 to brighten, keep saturation high)
-            v = np.power(v, 0.8)  # Square root brightens while preserving relative differences
-            v = np.clip(v * 1.5, 0.0, 1.0)  # Additional 1.5x boost, clamped to valid range
-            hsv = np.array([ang, 1.0, v])
-            rgb = matplotlib.colors.hsv_to_rgb(hsv)
-            # convert to BGR 0-255 ints for OpenCV
-            arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
+                ang = np.arctan2(avg_dy, avg_dx) + np.pi
+                ang *= 1.0 / np.pi / 2.0
+                # Robustly compute the value (brightness) channel. If the field is
+                # uniform (mag_range == 0) but non-zero, show relative brightness
+                # as avg_mag / max_mag so arrows are visible instead of black.
+                if mag_range != 0.0:
+                    v = (avg_mag - min_mag) / mag_range
+                else:
+                    v = (avg_mag / max_mag) if max_mag > 0.0 else 0.0
+                # Boost brightness for better visibility (apply power < 1 to brighten, keep saturation high)
+                v = np.power(v, 0.8)  # Square root brightens while preserving relative differences
+                v = np.clip(v * 1.5, 0.0, 1.0)  # Additional 1.5x boost, clamped to valid range
+                hsv = np.array([ang, 1.0, v])
+                rgb = matplotlib.colors.hsv_to_rgb(hsv)
+                # convert to BGR 0-255 ints for OpenCV
+                arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
 
             cv2.arrowedLine(img, (cx, cy), (end_x, end_y), arrow_color, thickness, tipLength=tip_length)
             return img
 
-        # Sample the flow fields
+        # Grid mode: divide image into grid_size x grid_size regions and draw average flow per region
+        if type == "grid":
+            # Calculate region dimensions
+            region_h = H // grid_size
+            region_w = W // grid_size
+            
+            # Maximum arrow length should be about 70-80% of the region size
+            max_arrow_length = int(0.9 * min(region_h, region_w))
+            
+            # Find global max magnitude for scaling
+            global_max_mag = 0.0
+            for grid_i in range(grid_size):
+                for grid_j in range(grid_size):
+                    # Define region boundaries
+                    start_i = grid_i * region_h
+                    end_i = start_i + region_h if grid_i < grid_size - 1 else H
+                    start_j = grid_j * region_w
+                    end_j = start_j + region_w if grid_j < grid_size - 1 else W
+                    
+                    # Get flow values in this region
+                    region_fx = fx[start_i:end_i, start_j:end_j]
+                    region_fy = fy[start_i:end_i, start_j:end_j]
+                    
+                    # Calculate average flow (only over pixels with magnitude > min_magnitude)
+                    region_mag = np.sqrt(region_fx**2 + region_fy**2)
+                    mask = region_mag >= min_magnitude
+                    
+                    if np.any(mask):
+                        avg_mag = float(np.sqrt(np.mean(region_fx[mask])**2 + np.mean(region_fy[mask])**2))
+                        global_max_mag = max(global_max_mag, avg_mag)
+            
+            # Draw arrows for each region
+            for grid_i in range(grid_size):
+                for grid_j in range(grid_size):
+                    # Define region boundaries
+                    start_i = grid_i * region_h
+                    end_i = start_i + region_h if grid_i < grid_size - 1 else H
+                    start_j = grid_j * region_w
+                    end_j = start_j + region_w if grid_j < grid_size - 1 else W
+                    
+                    # Get flow values in this region
+                    region_fx = fx[start_i:end_i, start_j:end_j]
+                    region_fy = fy[start_i:end_i, start_j:end_j]
+                    
+                    # Calculate average flow (only over pixels with magnitude > min_magnitude)
+                    region_mag = np.sqrt(region_fx**2 + region_fy**2)
+                    mask = region_mag >= min_magnitude
+                    
+                    if not np.any(mask):
+                        continue  # Skip regions with no significant flow
+                    
+                    avg_dx = float(np.mean(region_fx[mask]))
+                    avg_dy = float(np.mean(region_fy[mask]))
+                    avg_mag = float(np.sqrt(avg_dx**2 + avg_dy**2))
+                    
+                    if avg_mag < min_magnitude:
+                        continue
+                    
+                    # Center of the region
+                    center_i = (start_i + end_i) // 2
+                    center_j = (start_j + end_j) // 2
+                    
+                    # Calculate arrow length proportional to magnitude
+                    if global_max_mag > 0:
+                        arrow_length = int((avg_mag / global_max_mag) * max_arrow_length)
+                    else:
+                        arrow_length = max_arrow_length
+                    
+                    # Ensure minimum visible arrow length
+                    arrow_length = max(arrow_length, int(0.2 * max_arrow_length))
+                    
+                    # Invert direction for visualization
+                    inv_avg_dx = -avg_dx
+                    inv_avg_dy = -avg_dy
+                    
+                    # Calculate endpoint
+                    dir_x = inv_avg_dx / avg_mag
+                    dir_y = inv_avg_dy / avg_mag
+                    end_x = int(center_j + dir_x * arrow_length)
+                    end_y = int(center_i + dir_y * arrow_length)
+                    
+                    # Set color
+                    if force_white:
+                        arrow_color = (255, 255, 255)
+                    else:
+                        # Use original direction for color
+                        ang = np.arctan2(avg_dy, avg_dx) + np.pi
+                        ang *= 1.0 / np.pi / 2.0
+                        v = np.power(avg_mag / global_max_mag if global_max_mag > 0 else 0.0, 0.8)
+                        v = np.clip(v * 1.5, 0.0, 1.0)
+                        hsv = np.array([ang, 1.0, v])
+                        rgb = matplotlib.colors.hsv_to_rgb(hsv)
+                        arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
+                    
+                    # Draw arrow
+                    cv2.arrowedLine(img, (center_j, center_i), (end_x, end_y), arrow_color, thickness, tipLength=tip_length)
+            
+            return img
+
+        # Sample the flow fields (sparse mode)
         for i in range(0, H, step):
             for j in range(0, W, step):
                 dx = fx[i, j]
@@ -722,19 +851,22 @@ class Visualization:
 
                 # compute color from angle/magnitude using the ORIGINAL direction
                 # (do not invert) so colors correspond to the true flow direction
-                ang = np.arctan2(dy, dx) + np.pi
-                ang *= 1.0 / np.pi / 2.0
-                # Robust brightness normalization similar to flow_to_image.
-                if mag_range != 0.0:
-                    v = (mag - min_mag) / mag_range
+                if force_white:
+                    arrow_color = (255, 255, 255)  # White in BGR
                 else:
-                    v = (mag / max_mag) if max_mag > 0.0 else 0.0
-                # Boost brightness for better visibility
-                v = np.power(v, 0.8)  # Square root brightens while preserving relative differences
-                v = np.clip(v * 1.5, 0.0, 1.0)  # Additional 1.5x boost, clamped to valid range
-                hsv = np.array([ang, 1.0, v])
-                rgb = matplotlib.colors.hsv_to_rgb(hsv)
-                arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
+                    ang = np.arctan2(dy, dx) + np.pi
+                    ang *= 1.0 / np.pi / 2.0
+                    # Robust brightness normalization similar to flow_to_image.
+                    if mag_range != 0.0:
+                        v = (mag - min_mag) / mag_range
+                    else:
+                        v = (mag / max_mag) if max_mag > 0.0 else 0.0
+                    # Boost brightness for better visibility
+                    v = np.power(v, 0.8)  # Square root brightens while preserving relative differences
+                    v = np.clip(v * 1.5, 0.0, 1.0)  # Additional 1.5x boost, clamped to valid range
+                    hsv = np.array([ang, 1.0, v])
+                    rgb = matplotlib.colors.hsv_to_rgb(hsv)
+                    arrow_color = (int(rgb[2] * 255), int(rgb[1] * 255), int(rgb[0] * 255))
 
                 # Draw arrow
                 cv2.arrowedLine(img, (j, i), (end_x, end_y), arrow_color, thickness, tipLength=tip_length)

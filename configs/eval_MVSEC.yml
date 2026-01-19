@@ -1,15 +1,15 @@
 data:
     #path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
-    mode: gtflow_dt4 # gtflow_dt1/gtflow_dt4
-    window: 0.25 # 1 for dt1, 0.25 for dt4
+    mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
+    window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
 
 model:
     mask_output: True
     quantization:
-        enabled: True
-        PTQ: True # Post Training Quantization enabled or not
+        enabled: False
+        PTQ: False # Post Training Quantization enabled or not
         Conv_only: False
 
 # To generate non-trained models -----------------------------------------------------------
@@ -40,7 +40,7 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [64, 64] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
     gpu: 0
@@ -51,7 +51,7 @@ vis:
     px: 400
     bars: True
     activity: False
-    store: False
+    store: True
     store_interval: 0.0  # store every x seconds, 0.0 to disable
     #type: vectors # gradients or vectors
     store_type: video # video or image
