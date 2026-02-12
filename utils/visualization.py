@@ -37,13 +37,12 @@ class Visualization:
                 os.makedirs(self.store_dir)
             self.store_file = None
 
-    def update(self, inputs, flow, iwe, events_window=None, masked_window_flow=None, iwe_window=None, masked_window_gtflow=None):
+    def update(self, inputs, flow, iwe, events_window=None, masked_window_flow=None, iwe_window=None):
         """
         Live visualization.
         :param inputs: dataloader dictionary
         :param flow: [batch_size x 2 x H x W] optical flow map
         :param iwe: [batch_size x 1 x H x W] image of warped events
-        :param masked_window_gtflow: [batch_size x 2 x H x W] masked ground truth optical flow for eval window
         """
 
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
@@ -217,7 +216,7 @@ class Visualization:
 
         cv2.waitKey(1)
 
-    def store(self, inputs, flow, iwe, sequence, events_window=None, masked_window_flow=None, iwe_window=None, ts=None, masked_window_gtflow=None):
+    def store(self, inputs, flow, iwe, sequence, events_window=None, masked_window_flow=None, iwe_window=None, ts=None):
         """
         Store rendered images.
         :param inputs: dataloader dictionary
@@ -225,7 +224,6 @@ class Visualization:
         :param iwe: [batch_size x 1 x H x W] image of warped events
         :param sequence: filename of the event sequence under analysis
         :param ts: timestamp associated with rendered files (default = None)
-        :param masked_window_gtflow: [batch_size x 2 x H x W] masked ground truth optical flow for eval window
         """
 
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
@@ -401,7 +399,7 @@ class Visualization:
                     masked_window_flow_npy[:, :, 0],
                     masked_window_flow_npy[:, :, 1],
                     type="grid",
-                    grid_size=6,  # 6x6 = 36 regions
+                    grid_size=6,  # 6x6 = 36 regions for 64x64, 12x12 for 256x256
                     force_white=True,
                 )
                 if "masked_flow_vec" not in self.video_writers:
@@ -416,9 +414,7 @@ class Visualization:
             masked_vec_frame = masked_vec_img
 
         # ground-truth optical flow (gradient-based)
-        # Use masked_window_gtflow for stitched output if available, otherwise use full gtflow
-        gtflow_for_stitched = masked_window_gtflow if masked_window_gtflow is not None else gtflow
-        
+        # Save full gtflow to separate video/images
         if gtflow is not None:
             gtflow = gtflow.detach()
             gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
@@ -436,11 +432,13 @@ class Visualization:
                     self.video_writers["gtflow"] = cv2.VideoWriter(path_to + "gtflow/gtflow.mp4", fourcc, fps, shape)
                 self.video_writers["gtflow"].write(gtflow_img)
         
-        # Create frame for stitched output using masked GT flow if available
-        if gtflow_for_stitched is not None:
-            gtflow_for_stitched = gtflow_for_stitched.detach()
-            gtflow_stitch_h, gtflow_stitch_w = gtflow_for_stitched.shape[2], gtflow_for_stitched.shape[3]
-            gtflow_stitch_npy = gtflow_for_stitched.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_stitch_h, gtflow_stitch_w, 2))
+        # Create frame for stitched output using gtflow
+        if gtflow is not None:
+            gtflow = gtflow.detach()
+            gtflow_stitch_h, gtflow_stitch_w = gtflow.shape[2], gtflow.shape[3]
+            gtflow_stitch_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_stitch_h, gtflow_stitch_w, 2))
+            
+            # Visualize the flow
             gtflow_frame = self.flow_to_image(gtflow_stitch_npy[:, :, 0], gtflow_stitch_npy[:, :, 1])
             gtflow_frame = cv2.cvtColor(gtflow_frame, cv2.COLOR_RGB2BGR)
         else:
@@ -584,8 +582,8 @@ class Visualization:
             thickness = 3
             tip_length = 0.3
         elif type == "grid":
-            thickness = 1
-            tip_length = 0.15
+            thickness = 1 # 1 for 64x64, 3 for 256x256
+            tip_length = 0.15 # 0.15 for 64x64, 0.3 for 256x256
         else:
             thickness = 3
             tip_length = 0.3
@@ -734,7 +732,7 @@ class Visualization:
             region_w = W // grid_size
             
             # Maximum arrow length should be about 70-80% of the region size
-            max_arrow_length = int(0.9 * min(region_h, region_w))
+            max_arrow_length = int(0.9 * min(region_h, region_w)) # 0.9 for 64x64, 0.8 for 256x256
             
             # Find global max magnitude for scaling
             global_max_mag = 0.0
