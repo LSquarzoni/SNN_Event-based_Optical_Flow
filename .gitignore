@@ -10,5 +10,3 @@ exported_models/
 /build/
 /plots
 /runs
-/ONNX_LIF_operator/build/
-/ONNX_LIF_operator/dist/

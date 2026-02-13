@@ -54,7 +54,7 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT
      NOT IS_SYMLINK "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/liblif_op.so")
     file(RPATH_CHANGE
          FILE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/liblif_op.so"
-         OLD_RPATH "/lib/intel64:/lib/intel64_win:/lib/win-x64:/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/lib:"
+         OLD_RPATH "/lib/intel64:/lib/intel64_win:/lib/win-x64:/home/lorenzo/miniconda3/envs/EF/lib/python3.11/site-packages/torch/lib:"
          NEW_RPATH "")
     if(CMAKE_INSTALL_DO_STRIP)
       execute_process(COMMAND "/usr/bin/strip" "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/lib/liblif_op.so")

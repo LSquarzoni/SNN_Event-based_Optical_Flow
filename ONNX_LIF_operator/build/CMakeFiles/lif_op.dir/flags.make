@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = -DUSE_C10D_GLOO -DUSE_DISTRIBUTED -DUSE_RPC -DUSE_TENSORPIPE -Dlif_op_EXPORTS
 
-CXX_INCLUDES = -I/home/lorenzo/event_flow/ONNX_LIF_operator/src -I/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/share/cmake/Torch/../../../include -I/home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/share/cmake/Torch/../../../include/torch/csrc/api/include -isystem /home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/include -isystem /home/lorenzo/miniconda3/envs/EF/lib/python3.9/site-packages/torch/include/torch/csrc/api/include
+CXX_INCLUDES = -I/home/lorenzo/event_flow/ONNX_LIF_operator/src -I/home/lorenzo/miniconda3/envs/EF/lib/python3.11/site-packages/torch/share/cmake/Torch/../../../include -I/home/lorenzo/miniconda3/envs/EF/lib/python3.11/site-packages/torch/share/cmake/Torch/../../../include/torch/csrc/api/include -isystem /home/lorenzo/miniconda3/envs/EF/lib/python3.11/site-packages/torch/include -isystem /home/lorenzo/miniconda3/envs/EF/lib/python3.11/site-packages/torch/include/torch/csrc/api/include
 
 CXX_FLAGS = -std=gnu++17 -fPIC
 
