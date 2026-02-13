@@ -30,11 +30,16 @@ class ConvLayer(nn.Module):
         BN_momentum=0.1,
         w_scale=None,
         quantization_config=None,
+        exporting=False,
     ):
         super(ConvLayer, self).__init__()
+        self.exporting = exporting
 
         bias = False if norm == "BN" else True
         padding = kernel_size // 2
+        
+        if exporting:
+            bias = None
         
         # Quantization checking
         if quantization_config is not None and quantization_config["enabled"]:
@@ -56,7 +61,7 @@ class ConvLayer(nn.Module):
         if w_scale is not None:
             nn.init.uniform_(self.conv2d.weight, -w_scale, w_scale)
             # Only initialize bias if it exists
-            if hasattr(self.conv2d, 'bias') and self.conv2d.bias is not None:
+            if hasattr(self.conv2d, 'bias') and self.conv2d.bias is not None and not exporting:
                 nn.init.zeros_(self.conv2d.bias)
 
         # Handle activation properly
@@ -64,7 +69,7 @@ class ConvLayer(nn.Module):
             if quantization_config is not None and quantization_config["enabled"]:
                 # Use quantized activations when quantization is enabled
                 if activation == "tanh":
-                    self.activation = QuantTanh(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)  # Create instance, not class
+                    self.activation = QuantTanh(act_quant=Int8ActPerTensorFloat)  # Create instance, not class
                 elif activation == "relu":
                     self.activation = nn.ReLU(return_quant_tensor=False)  # For now, use regular ReLU
                 else:

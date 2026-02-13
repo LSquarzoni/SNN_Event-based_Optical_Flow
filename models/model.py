@@ -48,6 +48,7 @@ class LIFFireNet(BaseModel):
         self.encoding = unet_kwargs["encoding"]
         self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
         self.mask = unet_kwargs["mask_output"]
+        self.exporting = unet_kwargs.get("exporting", False)  # Extract export mode flag
         
         if type(unet_kwargs["spiking_neuron"]) is dict:
             for kwargs in self.kwargs:
@@ -68,27 +69,28 @@ class LIFFireNet(BaseModel):
         ff_act, rec_act = unet_kwargs["activations"]
         
         quantization_config = unet_kwargs.get("quantization", {})
+        exporting = self.exporting  # Use the stored export mode flag
 
-        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config)
+        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting)
 
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R1b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R2b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
 
         self.pred = ConvLayer(
@@ -121,22 +123,33 @@ class LIFFireNet(BaseModel):
     def init_cropping(self, width, height):
         pass
 
-    def forward(self, event_voxel, event_cnt, log=False):
+    def forward(self, event_voxel=None, event_cnt=None, log=False, return_dict=True):
         """
-        :param event_voxel: N x num_bins x H x W
+        :param event_voxel: N x num_bins x H x W (only used when exporting=False)
         :param event_cnt: N x 4 x H x W per-polarity event cnt and average timestamp
-        :param log: log activity
-        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor.
+        :param log: log activity (disabled during export)
+        :param return_dict: if True, return dict; if False, return flow tensor directly (for ONNX export)
+        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor,
+                 or just the flow tensor if return_dict=False.
         """
 
         # input encoding
-        if self.encoding == "voxel":
-            x = event_voxel
-        elif self.encoding == "cnt" and self.num_bins == 2:
-            x = event_cnt
+        if self.exporting:
+            # Export mode: only support cnt encoding
+            if self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding for export mode.")
+                raise AttributeError
         else:
-            print("Model error: Incorrect input encoding.")
-            raise AttributeError
+            # Normal mode: support both voxel and cnt encoding
+            if self.encoding == "voxel":
+                x = event_voxel
+            elif self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding.")
+                raise AttributeError
 
         # normalize input
         if self.norm_input:
@@ -158,9 +171,15 @@ class LIFFireNet(BaseModel):
         x7, self._states[6] = self.R2b(x6, self._states[6], residual=x5 if self.residual else 0)
 
         flow = self.pred(x7)  # [B, 2, H, W]
+        
+        # For FX tracing / ONNX export, return flow tensor directly
+        if not return_dict:
+            return flow
 
         # log activity
-        if log:
+        # Skip logging during FX tracing to avoid control flow issues
+        activity = None
+        if isinstance(log, bool) and log and not self.exporting:
             activity = {}
             name = [
                 "0:input",
@@ -175,8 +194,6 @@ class LIFFireNet(BaseModel):
             ]
             for n, l in zip(name, [x, x1, x2, x3, x4, x5, x6, x7, flow]):
                 activity[n] = l.detach().ne(0).float().mean().item()
-        else:
-            activity = None
 
         return {"flow": [flow], "activity": activity}
 
@@ -203,6 +220,7 @@ class LIFFireNet_short(BaseModel):
         self.encoding = unet_kwargs["encoding"]
         self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
         self.mask = unet_kwargs["mask_output"]
+        self.exporting = unet_kwargs.get("exporting", False)  # Extract export mode flag
         
         if type(unet_kwargs["spiking_neuron"]) is dict:
             for kwargs in self.kwargs:
@@ -223,24 +241,25 @@ class LIFFireNet_short(BaseModel):
         ff_act, rec_act = unet_kwargs["activations"]
         
         quantization_config = unet_kwargs.get("quantization", {})
+        exporting = self.exporting  # Use the stored export mode flag
 
         self.head = self.head_neuron(
-            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config
+            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         # R1b removed
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         # R2b removed
 
@@ -274,22 +293,33 @@ class LIFFireNet_short(BaseModel):
     def init_cropping(self, width, height):
         pass
 
-    def forward(self, event_voxel, event_cnt, log=False):
+    def forward(self, event_voxel=None, event_cnt=None, log=False, return_dict=True):
         """
-        :param event_voxel: N x num_bins x H x W
+        :param event_voxel: N x num_bins x H x W (only used when exporting=False)
         :param event_cnt: N x 4 x H x W per-polarity event cnt and average timestamp
-        :param log: log activity
-        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor.
+        :param log: log activity (disabled during export)
+        :param return_dict: if True, return dict; if False, return flow tensor directly (for ONNX export)
+        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor,
+                 or just the flow tensor if return_dict=False.
         """
 
         # input encoding
-        if self.encoding == "voxel":
-            x = event_voxel
-        elif self.encoding == "cnt" and self.num_bins == 2:
-            x = event_cnt
+        if self.exporting:
+            # Export mode: only support cnt encoding
+            if self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding for export mode.")
+                raise AttributeError
         else:
-            print("Model error: Incorrect input encoding.")
-            raise AttributeError
+            # Normal mode: support both voxel and cnt encoding
+            if self.encoding == "voxel":
+                x = event_voxel
+            elif self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding.")
+                raise AttributeError
 
         # normalize input
         if self.norm_input:
@@ -312,8 +342,14 @@ class LIFFireNet_short(BaseModel):
 
         flow = self.pred(x5)  # [B, 2, H, W]
 
+        # For FX tracing / ONNX export, return flow tensor directly
+        if not return_dict:
+            return flow
+
         # log activity
-        if log:
+        # Skip logging during FX tracing to avoid control flow issues
+        activity = None
+        if isinstance(log, bool) and log and not self.exporting:
             activity = {}
             name = [
                 "0:input",
@@ -326,8 +362,6 @@ class LIFFireNet_short(BaseModel):
             ]
             for n, l in zip(name, [x, x1, x2, x3, x4, x5, flow]):
                 activity[n] = l.detach().ne(0).float().mean().item()
-        else:
-            activity = None
 
         return {"flow": [flow], "activity": activity}
 
@@ -352,6 +386,7 @@ class LIFFireFlowNet(BaseModel):
         self.encoding = unet_kwargs["encoding"]
         self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
         self.mask = unet_kwargs["mask_output"]
+        self.exporting = unet_kwargs.get("exporting", False)  # Extract export mode flag
         
         if type(unet_kwargs["spiking_neuron"]) is dict:
             for kwargs in self.kwargs:
@@ -372,27 +407,28 @@ class LIFFireFlowNet(BaseModel):
         ff_act, rec_act = unet_kwargs["activations"]
         
         quantization_config = unet_kwargs.get("quantization", {})
+        exporting = self.exporting  # Use the stored export mode flag
 
-        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config)
+        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting)
 
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R1b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R2b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
 
         self.pred = ConvLayer(
@@ -425,22 +461,33 @@ class LIFFireFlowNet(BaseModel):
     def init_cropping(self, width, height):
         pass
 
-    def forward(self, event_voxel, event_cnt, log=False):
+    def forward(self, event_voxel=None, event_cnt=None, log=False, return_dict=True):
         """
-        :param event_voxel: N x num_bins x H x W
+        :param event_voxel: N x num_bins x H x W (only used when exporting=False)
         :param event_cnt: N x 4 x H x W per-polarity event cnt and average timestamp
-        :param log: log activity
-        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor.
+        :param log: log activity (disabled during export)
+        :param return_dict: if True, return dict; if False, return flow tensor directly (for ONNX export)
+        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor,
+                 or just the flow tensor if return_dict=False.
         """
 
         # input encoding
-        if self.encoding == "voxel":
-            x = event_voxel
-        elif self.encoding == "cnt" and self.num_bins == 2:
-            x = event_cnt
+        if self.exporting:
+            # Export mode: only support cnt encoding
+            if self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding for export mode.")
+                raise AttributeError
         else:
-            print("Model error: Incorrect input encoding.")
-            raise AttributeError
+            # Normal mode: support both voxel and cnt encoding
+            if self.encoding == "voxel":
+                x = event_voxel
+            elif self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding.")
+                raise AttributeError
 
         # normalize input
         if self.norm_input:
@@ -463,8 +510,14 @@ class LIFFireFlowNet(BaseModel):
 
         flow = self.pred(x7)  # [B, 2, H, W]
 
+        # For FX tracing / ONNX export, return flow tensor directly
+        if not return_dict:
+            return flow
+
         # log activity
-        if log:
+        # Skip logging during FX tracing to avoid control flow issues
+        activity = None
+        if isinstance(log, bool) and log and not self.exporting:
             activity = {}
             name = [
                 "0:input",
@@ -479,21 +532,19 @@ class LIFFireFlowNet(BaseModel):
             ]
             for n, l in zip(name, [x, x1, x2, x3, x4, x5, x6, x7, flow]):
                 activity[n] = l.detach().ne(0).float().mean().item()
-        else:
-            activity = None
 
         return {"flow": [flow], "activity": activity}
-    
-    
+
+
 class LIFFireFlowNet_short(BaseModel):
     """
     Shortened spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
     Uses feed-forward LIF neurons. R1b and R2b layers removed.
     """
 
-    head_neuron = custom_ConvLIF
-    ff_neuron = custom_ConvLIF
-    rec_neuron = custom_ConvLIF  # Feed-forward instead of recurrent
+    head_neuron = SNNtorch_ConvLIF
+    ff_neuron = SNNtorch_ConvLIF
+    rec_neuron = SNNtorch_ConvLIF  # Feed-forward instead of recurrent
     residual = False
     num_recurrent_units = 5  # Reduced from 7 to 5
     kwargs = [{}] * num_recurrent_units
@@ -505,6 +556,7 @@ class LIFFireFlowNet_short(BaseModel):
         self.encoding = unet_kwargs["encoding"]
         self.norm_input = False if "norm_input" not in unet_kwargs.keys() else unet_kwargs["norm_input"]
         self.mask = unet_kwargs["mask_output"]
+        self.exporting = unet_kwargs.get("exporting", False)  # Extract export mode flag
         
         if type(unet_kwargs["spiking_neuron"]) is dict:
             for kwargs in self.kwargs:
@@ -525,24 +577,25 @@ class LIFFireFlowNet_short(BaseModel):
         ff_act, rec_act = unet_kwargs["activations"]
         
         quantization_config = unet_kwargs.get("quantization", {})
+        exporting = self.exporting  # Use the stored export mode flag
 
         self.head = self.head_neuron(
-            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config
+            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         # R1b removed
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
         )
         # R2b removed
 
@@ -576,22 +629,33 @@ class LIFFireFlowNet_short(BaseModel):
     def init_cropping(self, width, height):
         pass
 
-    def forward(self, event_voxel, event_cnt, log=False):
+    def forward(self, event_voxel=None, event_cnt=None, log=False, return_dict=True):
         """
-        :param event_voxel: N x num_bins x H x W
+        :param event_voxel: N x num_bins x H x W (only used when exporting=False)
         :param event_cnt: N x 4 x H x W per-polarity event cnt and average timestamp
-        :param log: log activity
-        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor.
+        :param log: log activity (disabled during export)
+        :param return_dict: if True, return dict; if False, return flow tensor directly (for ONNX export)
+        :return: output dict with list of [N x 2 X H X W] (x, y) displacement within event_tensor,
+                 or just the flow tensor if return_dict=False.
         """
 
         # input encoding
-        if self.encoding == "voxel":
-            x = event_voxel
-        elif self.encoding == "cnt" and self.num_bins == 2:
-            x = event_cnt
+        if self.exporting:
+            # Export mode: only support cnt encoding
+            if self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding for export mode.")
+                raise AttributeError
         else:
-            print("Model error: Incorrect input encoding.")
-            raise AttributeError
+            # Normal mode: support both voxel and cnt encoding
+            if self.encoding == "voxel":
+                x = event_voxel
+            elif self.encoding == "cnt" and self.num_bins == 2:
+                x = event_cnt
+            else:
+                print("Model error: Incorrect input encoding.")
+                raise AttributeError
 
         # normalize input
         if self.norm_input:
@@ -614,8 +678,14 @@ class LIFFireFlowNet_short(BaseModel):
 
         flow = self.pred(x5)  # [B, 2, H, W]
 
+        # For FX tracing / ONNX export, return flow tensor directly
+        if not return_dict:
+            return flow
+
         # log activity
-        if log:
+        # Skip logging during FX tracing to avoid control flow issues
+        activity = None
+        if isinstance(log, bool) and log and not self.exporting:
             activity = {}
             name = [
                 "0:input",
@@ -628,8 +698,6 @@ class LIFFireFlowNet_short(BaseModel):
             ]
             for n, l in zip(name, [x, x1, x2, x3, x4, x5, flow]):
                 activity[n] = l.detach().ne(0).float().mean().item()
-        else:
-            activity = None
 
         return {"flow": [flow], "activity": activity}
 

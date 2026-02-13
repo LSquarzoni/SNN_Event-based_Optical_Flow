@@ -46,7 +46,6 @@ loader:
     augment: []
     gpu: 0
 
-
 vis:
     enabled: False
     px: 400

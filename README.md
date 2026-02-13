@@ -63,6 +63,7 @@ This repository implements Spiking Neural Networks (SNNs) for event-based optica
  ┣ 📜eval_flow_quant.py    Evaluation for quantized models
  ┃
  ┣ 📜Model_export.py       Model export to ONNX format
+ ┣ 📜Model_export_RealQuant.py  INT8 quantized ONNX export (DeepQuant)
  ┣ 📜LIF_layer_export.py   LIF layer export utilities
  ┣ 📜ConvLIF_layer_export.py  Convolutional LIF export
  ┃
@@ -209,6 +210,7 @@ These are the primary scripts for the standard workflow:
 | Script | Purpose | Use Case |
 |--------|---------|----------|
 | `Model_export.py` | Full model ONNX export | Export complete model for deployment |
+| `Model_export_RealQuant.py` | INT8 quantized ONNX export | Export with real INT8 quantization using DeepQuant |
 | `LIF_layer_export.py` | LIF layer export utility | Export individual LIF layers |
 | `ConvLIF_layer_export.py` | ConvLIF layer export utility | Export convolutional LIF blocks |
 
@@ -447,6 +449,28 @@ python ConvLIF_layer_export.py
 ```
 
 **Note**: The export scripts automatically use the custom ONNX operator instead of the regular SNNtorch modules during export.
+
+### INT8 Quantized Export (DeepQuant)
+
+For hardware deployment with true INT8 quantization, use `Model_export_RealQuant.py`:
+
+```bash
+python Model_export_RealQuant.py <mlflow_run_id> --config configs/eval_MVSEC.yml
+```
+
+This script uses **DeepQuant** (required dependency) to export ONNX models with real INT8 precision instead of floating-point quantization-aware operations. Key features:
+
+- **True INT8 tensors**: Quantizes weights and activations to 8-bit integers
+- **Calibration-based quantization**: Uses Post-Training Quantization (PTQ) with calibration data
+- **Brevitas integration**: Leverages Brevitas quantization annotations for optimal conversion
+- **ONNX QDQ format**: Exports models with QuantizeLinear/DequantizeLinear operators
+
+**Requirements**:
+- DeepQuant library (for `exportBrevitas` function)
+- Brevitas (already in requirements.txt)
+- QAT-trained model or model with quantization configuration
+
+The exported model (`exported_models/4_model_dequant_moved.onnx`) is optimized for deployment on edge devices and hardware accelerators supporting INT8 inference.
 
 ### Exported Model Location
 

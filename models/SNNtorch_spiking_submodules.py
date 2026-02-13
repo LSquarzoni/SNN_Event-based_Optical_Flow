@@ -14,39 +14,6 @@ from brevitas.core.quant import QuantType
 
 import models.spiking_util as spiking
 
-
-class SNNtorch_ConvReLU(nn.Module):
-    """
-    Dummy convolutional block with ReLU activation for ONNX export.
-    Mimics SNNtorch_ConvLIF interface.
-    """
-    def __init__(self, input_size, hidden_size, kernel_size, stride=1, activation=None, **kwargs):
-        super().__init__()
-        padding = kernel_size // 2
-        self.conv = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
-        self.relu = nn.ReLU()
-
-    def forward(self, input_, prev_state=None, residual=0):
-        out = self.conv(input_)
-        out = self.relu(out)
-        return out + residual, None
-
-class SNNtorch_ConvReLURecurrent(nn.Module):
-    """
-    Dummy recurrent convolutional block with ReLU activation for ONNX export.
-    Mimics SNNtorch_ConvLIFRecurrent interface.
-    """
-    def __init__(self, input_size, hidden_size, kernel_size, activation=None, **kwargs):
-        super().__init__()
-        padding = kernel_size // 2
-        self.conv = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
-        self.relu = nn.ReLU()
-
-    def forward(self, input_, prev_state=None):
-        out = self.conv(input_)
-        out = self.relu(out)
-        return out, None
-
 class SNNtorch_ConvLIF(nn.Module):
     """
     Convolutional spiking LIF cell using SNNTorch Leaky neuron.
@@ -74,6 +41,7 @@ class SNNtorch_ConvLIF(nn.Module):
         detach=True,
         norm=None,
         quantization_config=None,
+        exporting=False,
     ):
         super().__init__()
 
@@ -81,6 +49,7 @@ class SNNtorch_ConvLIF(nn.Module):
         padding = kernel_size // 2
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.exporting = exporting  # Store export mode flag
         
         # Per-channel parameters for initialization only
         beta_init = torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1])
@@ -89,7 +58,7 @@ class SNNtorch_ConvLIF(nn.Module):
         # Create snn.Leaky layer - parameters set at construction only
         reset_mechanism = "zero" if hard_reset else "subtract"
         
-        self.quantization_config = quantization_config["enabled"]
+        self.quantization_config = quantization_config["enabled"] if quantization_config is not None else False
         self.quant_conv_only = quantization_config.get("Conv_only", False) if quantization_config is not None else False
 
         # Quantization checking
@@ -232,6 +201,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         detach=True,
         norm=None,
         quantization_config=None,
+        exporting=False,
     ):
         super().__init__()
 
@@ -239,6 +209,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         padding = kernel_size // 2
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.exporting = exporting  # Store export mode flag
         
         # Per-channel parameters for initialization only
         beta_init = torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1])
@@ -247,7 +218,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         # Create snn.Leaky layer - parameters set at construction only
         reset_mechanism = "zero" if hard_reset else "subtract"
         
-        self.quantization_config = quantization_config["enabled"]
+        self.quantization_config = quantization_config["enabled"] if quantization_config is not None else False
         self.quant_conv_only = quantization_config.get("Conv_only", False) if quantization_config is not None else False
 
         # Quantization checking
@@ -435,6 +406,7 @@ class custom_ConvLIF(nn.Module):
         detach=True,
         norm=None,
         quantization_config=None,
+        exporting=False,
     ):
         super().__init__()
 
@@ -442,12 +414,13 @@ class custom_ConvLIF(nn.Module):
         padding = kernel_size // 2
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.exporting = exporting  # Store export mode flag
         
         # Per-channel parameters matching original implementation
         self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
 
-        self.quantization_config = quantization_config["enabled"]
+        self.quantization_config = quantization_config["enabled"] if quantization_config is not None else False
 
         # Quantization checking
         if quantization_config is not None and self.quantization_config:
@@ -461,8 +434,10 @@ class custom_ConvLIF(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-
             )
+            self.quant_lif_input = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_mem_input = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_spk_output = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
 
@@ -481,14 +456,30 @@ class custom_ConvLIF(nn.Module):
             mem = self.init_mem
         else:
             mem = prev_state[0]  # First element is membrane potential
+            
+        if self.quantization_config and self.exporting:
+            ff_q = self.quant_lif_input(ff)
+            mem_q = self.quant_mem_input(mem)
+            out = torch.ops.SNN_implementation.LIF(ff_q, mem_q, self.beta, self.threshold)
+            # Quantize the raw outputs from LIF
+            spk_raw = out[0]  # shape [N, C, H, W]
+            mem_raw = out[1]  # shape [N, C, H, W]
+            # Apply output quantization for the return value (spike output)
+            spk = self.quant_spk_output(spk_raw)
+            # For state: use raw (unquantized) values to avoid graph issues
+            # The quantization will be applied when these are used in the next timestep
+            mem_out = mem_raw
+        else:
+            # Apply LIF activation
+            out = torch.ops.SNN_implementation.LIF(ff, mem, self.beta, self.threshold)
+            spk = out[0]  # shape [N, C, H, W]
+            mem_out = out[1]  # shape [N, C, H, W]
 
-        # Apply LIF activation
-        out = torch.ops.SNN_implementation.LIF(ff, mem, self.beta, self.threshold)
-        spk = out[0]  # shape [N, C, H, W]
-        mem_out = out[1]  # shape [N, C, H, W]
-
-        # Create new state compatible with original interface
-        new_state = torch.stack([mem_out, spk])
+        if self.quantization_config and self.exporting:
+            new_state = torch.stack([mem_out, spk_raw], dim=0)
+        else:
+            # Create new state compatible with original interface
+            new_state = torch.stack([mem_out, spk], dim=0)
 
         return spk, new_state
     
@@ -519,6 +510,7 @@ class custom_ConvLIFRecurrent(nn.Module):
         detach=True,
         norm=None,
         quantization_config=None,
+        exporting=False,
     ):
         super().__init__()
 
@@ -526,12 +518,13 @@ class custom_ConvLIFRecurrent(nn.Module):
         padding = kernel_size // 2
         self.input_size = input_size
         self.hidden_size = hidden_size
+        self.exporting = exporting  # Store export mode flag
         
         # Per-channel parameters matching original implementation
         self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
         self.threshold = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(thresh[0], thresh[1]))
 
-        self.quantization_config = quantization_config["enabled"]
+        self.quantization_config = quantization_config["enabled"] if quantization_config is not None else False
 
         # Quantization checking
         if quantization_config is not None and self.quantization_config:
@@ -545,7 +538,6 @@ class custom_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-
             )
             self.rec = QuantConv2d(
                 input_size,
@@ -557,8 +549,12 @@ class custom_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-
             )
+            self.quant_identity_add = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            # Quantization layers for LIF operator inputs/outputs
+            self.quant_lif_input = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_mem_input = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_spk_output = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)
             self.rec = nn.Conv2d(hidden_size, hidden_size, kernel_size, padding=padding, bias=False)
@@ -587,16 +583,35 @@ class custom_ConvLIFRecurrent(nn.Module):
 
         # recurrent current
         rec = self.rec(prev_spk)
+        
+        if self.quantization_config and self.exporting:
+            rec_q = self.quant_identity_add(rec)
+            ff_q = self.quant_identity_add(ff)
+            total_current = ff_q + rec_q
+            # Apply quantization to LIF inputs
+            total_current_q = self.quant_lif_input(total_current)
+            mem_q = self.quant_mem_input(mem)
+            out = torch.ops.SNN_implementation.LIF(total_current_q, mem_q, self.beta, self.threshold)
+            # Quantize the raw outputs from LIF
+            spk_raw = out[0]  # shape [N, C, H, W]
+            mem_raw = out[1]  # shape [N, C, H, W]
+            # Apply output quantization for the return value (spike output)
+            spk_out = self.quant_spk_output(spk_raw)
+            # For state: use raw (unquantized) values to avoid graph issues
+            # The quantization will be applied when these are used in the next timestep
+            mem_out = mem_raw
+        else:
+            # Combine feedforward and recurrent currents
+            total_current = ff + rec
+            # Apply LIF activation
+            out = torch.ops.SNN_implementation.LIF(total_current, mem, self.beta, self.threshold)
+            spk_out = out[0]  # shape [N, C, H, W]
+            mem_out = out[1]  # shape [N, C, H, W]
 
-        # Combine feedforward and recurrent currents
-        total_current = ff + rec
-
-        # Apply LIF activation
-        out = torch.ops.SNN_implementation.LIF(total_current, mem, self.beta, self.threshold)
-        spk_out = out[0]  # shape [N, C, H, W]
-        mem_out = out[1]  # shape [N, C, H, W]
-
-        # Create new state compatible with original interface
-        new_state = torch.stack([mem_out, spk_out])
+        if self.quantization_config and self.exporting:
+            new_state = torch.stack([mem_out, spk_raw], dim=0)
+        else:
+            # Create new state compatible with original interface
+            new_state = torch.stack([mem_out, spk_out])
 
         return spk_out, new_state
