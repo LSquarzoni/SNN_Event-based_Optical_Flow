@@ -11,7 +11,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 # LibTorch C++ (use conda-installed torch)
 # If Torch_DIR isn't provided by the environment, default to the path inside the active conda env
 if(NOT DEFINED Torch_DIR AND DEFINED ENV{CONDA_PREFIX})
-    set(Torch_DIR "$ENV{CONDA_PREFIX}/lib/python3.9/site-packages/torch/share/cmake/Torch")
+    set(Torch_DIR "$ENV{CONDA_PREFIX}/lib/python3.11/site-packages/torch/share/cmake/Torch")
 endif()
 find_package(Torch REQUIRED)
 include_directories("${Torch_DIR}/../../../include")

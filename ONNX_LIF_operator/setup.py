@@ -2,7 +2,7 @@ from setuptools import setup, Extension
 import os
 
 conda_prefix = os.environ.get("CONDA_PREFIX", "")
-torch_site = os.path.join(conda_prefix, "lib", "python3.9", "site-packages", "torch")
+torch_site = os.path.join(conda_prefix, "lib", "python3.11", "site-packages", "torch")
 include_dirs = [
     os.path.join(torch_site, "include"),
     os.path.join(torch_site, "include", "torch", "csrc", "api", "include"),
