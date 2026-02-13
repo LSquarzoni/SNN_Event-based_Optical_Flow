@@ -9,6 +9,8 @@ from snntorch.functional import quant
 import brevitas
 from brevitas.nn import QuantConv2d, QuantIdentity
 from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
+from brevitas.nn.quant_layer import QuantLayerMixin
+from brevitas.core.quant import QuantType
 
 import models.spiking_util as spiking
 
@@ -199,7 +201,7 @@ class SNNtorch_ConvLIF(nn.Module):
             self.lif.detach_hidden()
 
         # Create new state compatible with original interface
-        new_state = torch.stack([mem_out, spk])
+        new_state = torch.stack([mem_out, spk], dim=0)
 
         return spk, new_state
     
@@ -401,7 +403,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.lif.detach_hidden()
 
         # Create new state compatible with original interface
-        new_state = torch.stack([mem_out, spk_out])
+        new_state = torch.stack([mem_out, spk_out], dim=0)
 
         return spk_out, new_state
     
@@ -459,9 +461,7 @@ class custom_ConvLIF(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
+
             )
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, stride=stride, padding=padding, bias=False)
@@ -545,9 +545,7 @@ class custom_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
+
             )
             self.rec = QuantConv2d(
                 input_size,
@@ -559,9 +557,7 @@ class custom_ConvLIFRecurrent(nn.Module):
                 input_quant=Int8ActPerTensorFloat,
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
-                #scaling_per_output_channel=True,
-                #per_channel_broadcastable_shape=(1, hidden_size, 1, 1),
-                #scaling_stats_permute_dims=(1, 0, 2, 3),
+
             )
         else:
             self.ff = nn.Conv2d(input_size, hidden_size, kernel_size, padding=padding, bias=False)

@@ -12,8 +12,8 @@ from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
 from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short
 from utils.utils import load_model
-from torch.onnx import register_custom_op_symbolic
 from torch.onnx import symbolic_helper as sym_help
+from torch.onnx import register_custom_op_symbolic
 
 
 def set_valueinfo_shape(value_proto, dims):
@@ -27,13 +27,14 @@ def set_valueinfo_shape(value_proto, dims):
 def lif_leaky_symbolic(g, input, mem, beta, threshold):
     return g.op("SNN_implementation::LIF", input, mem, beta, threshold, outputs=2)
 
-# Load the custom LIF operators
-register_custom_op_symbolic('SNN_implementation::LIF', lif_leaky_symbolic, 11)
+register_custom_op_symbolic("SNN_implementation::LIF", lif_leaky_symbolic, 18)
+
 # Ensure Torch can find its own libs when loading the custom op
 torch_lib = os.path.join(os.path.dirname(torch.__file__), 'lib')
 os.environ['LD_LIBRARY_PATH'] = f"{torch_lib}:{os.environ.get('LD_LIBRARY_PATH','')}"
+
 # Load the compiled custom op shared library
-custom_op_path = os.path.join('ONNX_LIF_operator', 'build', 'lib.linux-x86_64-cpython-39', 'lif_op.cpython-39-x86_64-linux-gnu.so')
+custom_op_path = os.path.join('ONNX_LIF_operator', 'build', 'lib.linux-x86_64-cpython-311', 'lif_op.cpython-311-x86_64-linux-gnu.so')
 torch.ops.load_library(custom_op_path)
 
 cf.IGNORE_MISSING_KEYS = True
@@ -204,24 +205,30 @@ def export_to_onnx(args, config_parser, export_quantized=False):
                     input_t=(event_voxel, event_cnt),
                     export_path=onnx_file_path,
                     export_params=True,
-                    opset_version=11,
+                    opset_version=18,
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
-                    custom_opsets={"SNN_implementation": 11},
+                    custom_opsets={"SNN_implementation": 18},
+                    dynamo=False,  # Force legacy TorchScript-based exporter
                 )
             else:
                 # Standard FP32 export
                 print("Exporting FP32 model...")
+                
+                # Use legacy exporter for custom ops compatibility
+                from torch.onnx import _constants
+                
                 torch.onnx.export(
                     model,
                     (event_voxel, event_cnt),
                     onnx_file_path,
                     export_params=True,
-                    opset_version=11,
+                    opset_version=18,
                     do_constant_folding=True,
                     input_names=['event_voxel', 'event_cnt'],
                     output_names=['flow'],
-                    custom_opsets={"SNN_implementation": 11},
+                    custom_opsets={"SNN_implementation": 18},
+                    dynamo=False,  # Force legacy TorchScript-based exporter
                 )
 
             # Verify the exported model

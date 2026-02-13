@@ -6,6 +6,7 @@ data:
     window_eval: 15000 # not used
 
 model:
+    exporting: False
     mask_output: True
     quantization:
         enabled: False

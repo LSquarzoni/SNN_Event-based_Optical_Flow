@@ -9,8 +9,7 @@ import torch.nn.functional as f
 import snntorch
 import brevitas
 from brevitas.nn import QuantConv2d, QuantTanh
-from brevitas.quant import Int8Bias
-from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat
+from brevitas.quant import Int8WeightPerTensorFloat, Int8ActPerTensorFloat, Int8Bias
 
 import models.spiking_util as spiking
 
