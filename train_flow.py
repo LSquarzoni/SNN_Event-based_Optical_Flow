@@ -10,12 +10,6 @@ from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
 from loss.flow import EventWarping
 from models.model import (
-    FireNet,
-    FireNet_short,
-    FireFlowNet,
-    FireFlowNet_short,
-)
-from models.model import (
     LIFFireNet,
     LIFFireNet_short,
     LIFFireFlowNet,

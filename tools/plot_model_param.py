@@ -6,9 +6,13 @@ import mlflow
 import torch
 
 sys.path.append(".")  # because file not in root
-from models.model import FireFlowNet, EVFlowNet
-from models.model import FireNet, E2VID, RecEVFlowNet, RNNFireNet, LeakyFireNet
-from models.model import LIFFireNet, PLIFFireNet, ALIFFireNet, XLIFFireNet, LIFFireFlowNet
+from models.model import (
+    LIFFireNet,
+    LIFFireNet_short,
+    LIFFireFlowNet,
+    LIFFireFlowNet_short,
+    SpikingRecEVFlowNet,
+)
 from utils.utils import load_model
 
 

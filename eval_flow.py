@@ -17,14 +17,6 @@ from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader, H5Loader_original
 from loss.flow import AEE, NEE, AAE, NAAE, AE_ofMeans, AAE_Weighted, AAE_Filtered
 from models.model import (
-    FireNet,
-    FireNet_short,
-    FireFlowNet,
-    FireFlowNet_short,
-    EVFlowNet,
-
-)
-from models.model import (
     LIFFireNet,
     LIFFireNet_short,
     LIFFireFlowNet,
