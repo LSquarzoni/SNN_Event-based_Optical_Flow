@@ -44,7 +44,7 @@ loader:
     resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
     augment: []
-    gpu: 0
+    gpu: 2
 
 vis:
     enabled: False

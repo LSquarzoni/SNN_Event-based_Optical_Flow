@@ -839,11 +839,6 @@ class SpikingRecEVFlowNet(BaseModel):
 
         return {"flow": flow_list, "activity": activity}
 
-
-# For ONNX export, swap LIF neurons for dummy ReLU modules
-from .SNNtorch_spiking_submodules import SNNtorch_ConvReLU, SNNtorch_ConvReLURecurrent
-
-
 # Utility classes for custom LIF layers and ONNX export
 
 class LIF(torch.nn.Module):
