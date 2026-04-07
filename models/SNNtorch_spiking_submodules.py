@@ -130,6 +130,9 @@ class SNNtorch_ConvLIF(nn.Module):
         w_scale = math.sqrt(1 / input_size)
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
+        # Batch normalization for input current to LIF neuron
+        self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+
         """ # Register fixed initializers so ONNX export contains clear constants
         # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
         init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
@@ -155,6 +158,9 @@ class SNNtorch_ConvLIF(nn.Module):
         if self.norm is not None:
             input_ = self.norm(input_)
         ff = self.ff(input_)
+        
+        # Batch normalize the input current before LIF neuron
+        ff = self.bn(ff)
 
         # Extract membrane potential from prev_state for compatibility
         if prev_state is None:
@@ -313,6 +319,9 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         w_scale_rec = math.sqrt(1 / hidden_size)
         nn.init.uniform_(self.ff.weight, -w_scale_ff, w_scale_ff)
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
+        
+        # Batch normalization for combined input current to LIF neuron
+        self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
         """ # Register fixed initializers so ONNX export contains clear constants
         # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
         init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
@@ -365,6 +374,9 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             total_current = self.quant_identity(ff) + self.quant_identity(rec)
         else:
             total_current = ff + rec
+        
+        # Batch normalize the combined input current before LIF neuron
+        total_current = self.bn(total_current)
 
         # Apply snn.Leaky neuron
         spk_out, mem_out = self.lif(total_current, mem)

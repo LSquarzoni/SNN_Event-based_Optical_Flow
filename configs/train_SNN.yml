@@ -21,7 +21,7 @@ model:
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
     quantization:
-        enabled: True
+        enabled: False
         PTQ: False 
         Conv_only: False
 
@@ -38,17 +38,17 @@ loss:
     overwrite_intermediate: False
 
 optimizer:
-    #name: Adam
-    #lr: 0.0002
-    name: SGD
-    lr: 0.0001  # Lower than Adam, start conservative
-    momentum: 0.9
-    weight_decay: 0.0001  # Small regularization helps stability
-    nesterov: True  # Nesterov momentum is smoother
+    name: Adam
+    lr: 0.0002
+    # name: SGD
+    # lr: 0.0001  # Lower than Adam, start conservative
+    # momentum: 0.9
+    # weight_decay: 0.0001  # Small regularization helps stability
+    # nesterov: True  # Nesterov momentum is smoother
 
 loader:
-    n_epochs: 50
-    batch_size: 4
+    n_epochs: 100
+    batch_size: 8
     resolution: [128, 128] # H x W
     std_resolution: [128, 128] # H x W
     augment: ["Horizontal", "Vertical", "Polarity"]
