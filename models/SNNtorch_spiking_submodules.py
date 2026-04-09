@@ -14,6 +14,113 @@ from brevitas.core.quant import QuantType
 
 import models.spiking_util as spiking
 
+
+class TEBN(nn.Module):
+    """
+    Temporal Effective Batch Normalization (TEBN) for SNNs.
+    
+    Applies learnable per-timestep scaling to BN outputs to normalize temporal distributions.
+    Based on: "Temporal Effective Batch Normalization in Spiking Neural Networks" (NeurIPS 2022)
+    
+    Args:
+        num_features: Number of channels
+        num_timesteps: Maximum number of timesteps (default: 4)
+        momentum: BN momentum (default: 0.1)
+        eps: BN epsilon (default: 1e-5)
+    """
+    def __init__(self, num_features, num_timesteps=4, momentum=0.1, eps=1e-5):
+        super().__init__()
+        self.bn = nn.BatchNorm2d(num_features, momentum=momentum, eps=eps)
+        # Learnable temporal weights p[t] for each timestep, shape: [T, C, 1, 1]
+        self.register_parameter(
+            'p', 
+            nn.Parameter(torch.ones(num_timesteps, num_features, 1, 1))
+        )
+        self.num_timesteps = num_timesteps
+        
+    def forward(self, x, timestep=None):
+        """
+        Apply TEBN normalization.
+        
+        Args:
+            x: Input tensor of shape [N, C, H, W]
+            timestep: Current timestep index (0 to num_timesteps-1). If None, uses average p.
+            
+        Returns:
+            Normalized output with temporal scaling applied
+        """
+        # First apply standard batch normalization
+        x_bn = self.bn(x)
+        
+        # Select temporal weight p[t] or use average
+        if timestep is not None and 0 <= timestep < self.num_timesteps:
+            p_t = self.p[timestep:timestep+1]  # Shape: [1, C, 1, 1]
+        else:
+            # Use mean of all p values as fallback
+            p_t = self.p.mean(dim=0, keepdim=True)  # Shape: [1, C, 1, 1]
+        
+        # Scale BN output by temporal weight: γ̂[t] = γ × p[t]
+        return x_bn * p_t
+
+
+class MPBN(nn.Module):
+    """
+    Membrane Potential Batch Normalization (MPBN) for SNNs.
+    
+    Normalizes membrane potentials directly after integration to stabilize LIF dynamics.
+    The normalization can fold into the threshold at inference time for zero computational cost.
+    Based on membrane potential batch normalization concepts for stable SNN training.
+    
+    Args:
+        num_features: Number of channels
+        momentum: BN momentum (default: 0.1)
+        eps: BN epsilon (default: 1e-5)
+    """
+    def __init__(self, num_features, momentum=0.1, eps=1e-5):
+        super().__init__()
+        # Batch normalization for membrane potentials
+        self.bn = nn.BatchNorm2d(num_features, momentum=momentum, eps=eps)
+        
+    def forward(self, mem):
+        """
+        Apply MPBN normalization to membrane potential.
+        
+        Args:
+            mem: Membrane potential tensor of shape [N, C, H, W]
+            
+        Returns:
+            Normalized membrane potential
+        """
+        # Normalize membrane potential directly: (mem - μ) / σ
+        return self.bn(mem)
+    
+    def get_effective_threshold(self, threshold):
+        """
+        Get effective threshold with MPBN fused in (for inference optimization).
+        
+        When MPBN normalizes as: mem_norm = (mem - running_mean) / running_std,
+        the effective threshold becomes: threshold_eff = threshold * running_std + running_mean
+        
+        This allows zero-cost deployment by fusing the normalization into the threshold.
+        
+        Args:
+            threshold: Original threshold tensor
+            
+        Returns:
+            Effective threshold with MPBN fused in (only used at inference if desired)
+        """
+        if self.bn.training:
+            # During training, return original threshold (MPBN applied explicitly)
+            return threshold
+        
+        # At inference: fuse MPBN into threshold
+        # threshold_eff = threshold * std(mem) + mean(mem)
+        mean = self.bn.running_mean.view(1, -1, 1, 1)
+        std = torch.sqrt(self.bn.running_var.view(1, -1, 1, 1) + self.bn.eps)
+        threshold_eff = (threshold * std) + mean
+        return threshold_eff
+
+
 class SNNtorch_ConvLIF(nn.Module):
     """
     Convolutional spiking LIF cell using SNNTorch Leaky neuron.
@@ -23,6 +130,8 @@ class SNNtorch_ConvLIF(nn.Module):
     - Maintains compatibility with existing model interface
     - Per-channel learnable parameters like original implementation
     - Supports quantization and normalization options
+    - Optional TEBN (Temporal Effective Batch Normalization) for per-timestep scaling of inputs
+    - Optional MPBN (Membrane Potential BN) for normalizing membrane potentials with zero-cost inference
     """
 
     def __init__(
@@ -42,6 +151,9 @@ class SNNtorch_ConvLIF(nn.Module):
         norm=None,
         quantization_config=None,
         exporting=False,
+        tebn=False,
+        num_timesteps=4,
+        mpbn=False,
     ):
         super().__init__()
 
@@ -131,7 +243,23 @@ class SNNtorch_ConvLIF(nn.Module):
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
         # Batch normalization for input current to LIF neuron
-        self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+        # Use TEBN (Temporal Effective BN) if enabled for better temporal dynamics
+        if tebn:
+            self.bn = TEBN(hidden_size, num_timesteps=num_timesteps, momentum=0.1, eps=1e-5)
+        else:
+            self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+        
+        self.tebn_enabled = tebn
+        self.num_timesteps = num_timesteps
+        
+        # Membrane Potential Batch Normalization for normalizing membrane potentials
+        # Can fold into threshold at inference time for zero computational cost
+        if mpbn:
+            self.mpbn = MPBN(hidden_size, momentum=0.1, eps=1e-5)
+        else:
+            self.mpbn = None
+        
+        self.mpbn_enabled = mpbn
 
         """ # Register fixed initializers so ONNX export contains clear constants
         # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
@@ -151,7 +279,7 @@ class SNNtorch_ConvLIF(nn.Module):
         else:
             self.norm = None
 
-    def forward(self, input_, prev_state, residual=0):
+    def forward(self, input_, prev_state, residual=0, timestep=None):
         self.lif.threshold.data.clamp_(min=0.01)
         
         # input current
@@ -160,7 +288,11 @@ class SNNtorch_ConvLIF(nn.Module):
         ff = self.ff(input_)
         
         # Batch normalize the input current before LIF neuron
-        ff = self.bn(ff)
+        # If TEBN is enabled, pass the current timestep for temporal scaling
+        if self.tebn_enabled:
+            ff = self.bn(ff, timestep=timestep)
+        else:
+            ff = self.bn(ff)
 
         # Extract membrane potential from prev_state for compatibility
         if prev_state is None:
@@ -170,6 +302,11 @@ class SNNtorch_ConvLIF(nn.Module):
 
         # Apply snn.Leaky neuron
         spk, mem_out = self.lif(ff, mem)
+
+        # Normalize membrane potential if MPBN is enabled
+        # This stabilizes the dynamics and can be fused into the threshold at inference
+        if self.mpbn_enabled:
+            mem_out = self.mpbn(mem_out)
 
         # Detach the output membrane potential to ensure clean state transitions
         if self.detach:
@@ -190,6 +327,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
     - Per-channel learnable parameters like original implementation
     - Supports quantization and normalization options
     - Includes recurrent connections
+    - Optional TEBN (Temporal Effective Batch Normalization) for per-timestep scaling of inputs
+    - Optional MPBN (Membrane Potential BN) for normalizing membrane potentials with zero-cost inference
     """
 
     def __init__(
@@ -208,6 +347,9 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         norm=None,
         quantization_config=None,
         exporting=False,
+        tebn=False,
+        num_timesteps=4,
+        mpbn=False,
     ):
         super().__init__()
 
@@ -321,7 +463,24 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
         
         # Batch normalization for combined input current to LIF neuron
-        self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+        # Use TEBN (Temporal Effective BN) if enabled for better temporal dynamics
+        if tebn:
+            self.bn = TEBN(hidden_size, num_timesteps=num_timesteps, momentum=0.1, eps=1e-5)
+        else:
+            self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+        
+        self.tebn_enabled = tebn
+        self.num_timesteps = num_timesteps
+        
+        # Membrane Potential Batch Normalization for normalizing membrane potentials
+        # Can fold into threshold at inference time for zero computational cost
+        if mpbn:
+            self.mpbn = MPBN(hidden_size, momentum=0.1, eps=1e-5)
+        else:
+            self.mpbn = None
+        
+        self.mpbn_enabled = mpbn
+        
         """ # Register fixed initializers so ONNX export contains clear constants
         # init_mem: values in [0.0, 0.8], shape [1, C, 1, 1]
         init_mem = torch.rand(1, hidden_size, 1, 1) * 0.8
@@ -348,7 +507,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             self.norm_ff = None
             self.norm_rec = None
 
-    def forward(self, input_, prev_state, residual=0):
+    def forward(self, input_, prev_state, residual=0, timestep=None):
         self.lif.threshold.data.clamp_(min=0.01)
         
         # input current
@@ -376,10 +535,19 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
             total_current = ff + rec
         
         # Batch normalize the combined input current before LIF neuron
-        total_current = self.bn(total_current)
+        # If TEBN is enabled, pass the current timestep for temporal scaling
+        if self.tebn_enabled:
+            total_current = self.bn(total_current, timestep=timestep)
+        else:
+            total_current = self.bn(total_current)
 
         # Apply snn.Leaky neuron
         spk_out, mem_out = self.lif(total_current, mem)
+
+        # Normalize membrane potential if MPBN is enabled
+        # This stabilizes the dynamics and can be fused into the threshold at inference
+        if self.mpbn_enabled:
+            mem_out = self.mpbn(mem_out)
 
         # Detach the output membrane potential to ensure clean state transitions
         if self.detach:

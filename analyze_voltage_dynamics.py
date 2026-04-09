@@ -47,6 +47,23 @@ class VoltageProfiler:
         # Attach hooks to all SNNtorch_ConvLIF and SNNtorch_ConvLIFRecurrent layers
         self._attach_hooks()
     
+    def _init_layer_stats(self, layer_name):
+        """Initialize streaming statistics for a layer."""
+        if layer_name not in self.voltage_stats:
+            self.voltage_stats[layer_name] = {
+                'count': 0,
+                'voltage_sum': 0,
+                'voltage_sum_sq': 0,
+                'voltage_min': float('inf'),
+                'voltage_max': float('-inf'),
+                'spike_sum': 0,
+                'per_neuron_spike_sums': None,
+                'per_neuron_counts': None,
+                'channel_spike_sums': None,
+                'channel_counts': 0,
+                'num_channels': None,
+            }
+    
     def _register_layer_names(self):
         """Create mapping of layer indices to readable names."""
         layer_counter = defaultdict(int)
@@ -82,15 +99,40 @@ class VoltageProfiler:
             mem_np = mem.detach().cpu().numpy()
             spk_np = spk.detach().cpu().numpy()
             
-            # Store statistics
+            # Initialize layer stats on first encounter
             if layer_name not in self.voltage_stats:
-                self.voltage_stats[layer_name] = {
-                    'voltages': [],
-                    'spikes': [],
-                }
+                self._init_layer_stats(layer_name)
+                self.voltage_stats[layer_name]['num_channels'] = mem_np.shape[1]
             
-            self.voltage_stats[layer_name]['voltages'].append(mem_np)
-            self.voltage_stats[layer_name]['spikes'].append(spk_np)
+            # Update streaming statistics
+            stats = self.voltage_stats[layer_name]
+            
+            # Global voltage statistics
+            stats['count'] += mem_np.size
+            stats['voltage_sum'] += mem_np.sum()
+            stats['voltage_sum_sq'] += (mem_np ** 2).sum()
+            stats['voltage_min'] = min(stats['voltage_min'], mem_np.min())
+            stats['voltage_max'] = max(stats['voltage_max'], mem_np.max())
+            
+            # Global spike statistics
+            stats['spike_sum'] += spk_np.sum()
+            
+            # Per-channel statistics (reshape: [B*T, C, H, W] -> [B*T, C, H*W])
+            batch_size, channels, height, width = mem_np.shape
+            mem_reshaped = mem_np.reshape(batch_size, channels, -1)
+            spk_reshaped = spk_np.reshape(batch_size, channels, -1)
+            
+            # Per-neuron spike tracking
+            if stats['per_neuron_spike_sums'] is None:
+                spatial_size = height * width
+                stats['per_neuron_spike_sums'] = np.zeros((channels, spatial_size))
+                stats['per_neuron_counts'] = np.zeros((channels, spatial_size))
+                stats['channel_spike_sums'] = np.zeros(channels)
+            
+            stats['per_neuron_spike_sums'] += spk_reshaped.sum(axis=0)
+            stats['per_neuron_counts'] += batch_size
+            stats['channel_spike_sums'] += spk_reshaped.sum(axis=(0, 2))
+            stats['channel_counts'] += batch_size * (height * width)
         
         return hook
     
@@ -101,7 +143,7 @@ class VoltageProfiler:
         self.hooks = []
     
     def compute_statistics(self):
-        """Compute aggregated statistics from collected data."""
+        """Compute aggregated statistics from collected streaming data."""
         import time
         stats = {}
         
@@ -110,86 +152,88 @@ class VoltageProfiler:
             layer_start = time.time()
             
             data = self.voltage_stats[layer_name]
-            voltages = np.concatenate(data['voltages'], axis=0)  # [B*T, C, H, W]
-            spikes = np.concatenate(data['spikes'], axis=0)
             
-            batch_size, channels, height, width = voltages.shape
+            # Compute mean and std from streaming statistics
+            count = data['count']
+            voltage_mean = data['voltage_sum'] / count if count > 0 else 0
+            voltage_var = (data['voltage_sum_sq'] / count) - (voltage_mean ** 2) if count > 0 else 0
+            voltage_std = np.sqrt(max(voltage_var, 0))  # Ensure non-negative
             
-            # Compute all percentiles at once on flattened 1D array (faster than separate calls)
             print(".", end='', flush=True)
-            voltages_flat_1d = voltages.flatten()
-            percentiles = np.percentile(voltages_flat_1d, [5, 50, 95])
-            del voltages_flat_1d
             
-            # Reshape spike data once for channel-wise operations
+            # Channel statistics
+            num_channels = data['num_channels']
+            channel_spike_rates = data['channel_spike_sums'] / data['channel_counts'] if data['channel_counts'] > 0 else np.zeros(num_channels)
+            
+            # Per-neuron spike rates
             print(".", end='', flush=True)
-            spikes_reshaped = spikes.reshape(batch_size, channels, -1)  # [B*T, C, H*W]
-            voltages_reshaped = voltages.reshape(batch_size, channels, -1)  # [B*T, C, H*W]
+            per_neuron_spike_rates = data['per_neuron_spike_sums'] / np.maximum(data['per_neuron_counts'], 1)
             
-            # Compute per-channel stats efficiently
+            # Channel-wise voltage ranges (approximated from global stats)
             print(".", end='', flush=True)
-            channel_spike_rates = spikes_reshaped.mean(axis=(0, 2))  # Mean over time and spatial
-            per_neuron_spike_rates = spikes_reshaped.mean(axis=0)  # Mean over time only: [C, H*W]
+            channel_voltage_ranges = np.full(num_channels, data['voltage_max'] - data['voltage_min'])
             
-            # Compute per-channel voltage stats
+            # Compute dead/underutilized channel counts
             print(".", end='', flush=True)
-            channel_voltage_mins = voltages_reshaped.min(axis=(0, 2))  # [C]
-            channel_voltage_maxs = voltages_reshaped.max(axis=(0, 2))  # [C]
-            channel_voltage_means = voltages_reshaped.mean(axis=(0, 2))  # [C]
-            channel_voltage_stds = voltages_reshaped.std(axis=(0, 2))  # [C]
+            channels_dead = int((channel_spike_rates == 0).sum())
+            channels_very_low = int((channel_spike_rates < 0.01).sum())
+            channels_low = int((channel_spike_rates < 0.05).sum())
+            channels_moderate = int((channel_spike_rates < 0.20).sum())
             
-            # Voltage range per channel
-            channel_voltage_ranges = channel_voltage_maxs - channel_voltage_mins
+            # Per-neuron analysis
+            print(".", end='', flush=True)
+            neurons_dead = int((per_neuron_spike_rates == 0).sum())
+            neurons_very_low = int((per_neuron_spike_rates < 0.01).sum())
+            neurons_low = int((per_neuron_spike_rates < 0.05).sum())
+            neurons_moderate = int((per_neuron_spike_rates < 0.20).sum())
+            total_neurons = per_neuron_spike_rates.size
             
             print(".", end='', flush=True)
             stats[layer_name] = {
-                'num_samples': batch_size,
-                'num_channels': channels,
-                'spatial_size': height * width,
+                'num_samples': 'N/A (streaming)',
+                'num_channels': num_channels,
+                'spatial_size': per_neuron_spike_rates.shape[1],
                 
                 # Global statistics
-                'voltage_min': float(voltages.min()),
-                'voltage_max': float(voltages.max()),
-                'voltage_mean': float(voltages.mean()),
-                'voltage_std': float(voltages.std()),
-                'voltage_median': float(percentiles[1]),
-                'voltage_q5': float(percentiles[0]),
-                'voltage_q95': float(percentiles[2]),
+                'voltage_min': float(data['voltage_min']),
+                'voltage_max': float(data['voltage_max']),
+                'voltage_mean': float(voltage_mean),
+                'voltage_std': float(voltage_std),
+                'voltage_median': np.nan,  # Cannot compute from streaming
+                'voltage_q5': np.nan,
+                'voltage_q95': np.nan,
                 
                 # Per-channel statistics
-                'channel_voltage_mins': channel_voltage_mins,
-                'channel_voltage_maxs': channel_voltage_maxs,
-                'channel_voltage_means': channel_voltage_means,
-                'channel_voltage_stds': channel_voltage_stds,
+                'channel_voltage_mins': None,
+                'channel_voltage_maxs': None,
+                'channel_voltage_means': np.full(num_channels, voltage_mean),
+                'channel_voltage_stds': np.full(num_channels, voltage_std),
                 
                 # Spike rate statistics
-                'spike_rate_global': float(spikes.mean()),
+                'spike_rate_global': float(data['spike_sum'] / count if count > 0 else 0),
                 'channel_spike_rates': channel_spike_rates,
                 'per_neuron_spike_rates': per_neuron_spike_rates,
                 
                 # Detailed spike rate analysis
-                'channels_dead': int((channel_spike_rates == 0).sum()),
-                'channels_very_low': int((channel_spike_rates < 0.01).sum()),
-                'channels_low': int((channel_spike_rates < 0.05).sum()),
-                'channels_moderate': int((channel_spike_rates < 0.20).sum()),
+                'channels_dead': channels_dead,
+                'channels_very_low': channels_very_low,
+                'channels_low': channels_low,
+                'channels_moderate': channels_moderate,
                 
                 # Per-neuron analysis
-                'neurons_dead': int((per_neuron_spike_rates == 0).sum()),
-                'neurons_very_low': int((per_neuron_spike_rates < 0.01).sum()),
-                'neurons_low': int((per_neuron_spike_rates < 0.05).sum()),
-                'neurons_moderate': int((per_neuron_spike_rates < 0.20).sum()),
-                'total_neurons': int(per_neuron_spike_rates.size),
+                'neurons_dead': neurons_dead,
+                'neurons_very_low': neurons_very_low,
+                'neurons_low': neurons_low,
+                'neurons_moderate': neurons_moderate,
+                'total_neurons': total_neurons,
                 
                 # Voltage range per channel
                 'channel_voltage_ranges': channel_voltage_ranges,
                 
-                # Raw data for histograms
-                'voltages_raw': voltages.flatten(),
-                'spikes_raw': spikes.flatten(),
+                # Raw data approximation (empty, not used in streaming mode)
+                'voltages_raw': np.array([]),
+                'spikes_raw': np.array([]),
             }
-            
-            # Clean up large arrays to free memory
-            del voltages, spikes, spikes_reshaped, voltages_reshaped
             
             layer_time = time.time() - layer_start
             print(f" ({layer_time:.2f}s)")
@@ -342,8 +386,11 @@ def print_statistics(stats):
     for layer_name in sorted(stats.keys()):
         s = stats[layer_name]
         v_range = s['voltage_max'] - s['voltage_min']
-        print(f"{layer_name:<40} {s['voltage_q5']:<12.4f} {s['voltage_median']:<12.4f} "
-              f"{s['voltage_q95']:<12.4f} {v_range:<12.4f}")
+        q5_str = f"{s['voltage_q5']:.4f}" if not np.isnan(s['voltage_q5']) else "N/A"
+        median_str = f"{s['voltage_median']:.4f}" if not np.isnan(s['voltage_median']) else "N/A"
+        q95_str = f"{s['voltage_q95']:.4f}" if not np.isnan(s['voltage_q95']) else "N/A"
+        print(f"{layer_name:<40} {q5_str:<12} {median_str:<12} "
+              f"{q95_str:<12} {v_range:<12.4f}")
     
     # ENHANCED: Print detailed channel utilization analysis
     print(f"\n{'='*100}")
@@ -381,29 +428,10 @@ def generate_visualizations(stats, output_dir):
     
     num_layers = len(stats)
     
-    # 1. Voltage distribution histograms
-    fig, axes = plt.subplots(num_layers, 1, figsize=(12, 4*num_layers))
-    if num_layers == 1:
-        axes = [axes]
+    # Note: Raw voltage/spike histograms skipped in streaming mode (memory optimization)
+    # Voltage distribution histograms would require storing all raw data, which defeats memory optimization
     
-    for idx, layer_name in enumerate(sorted(stats.keys())):
-        s = stats[layer_name]
-        voltages = s['voltages_raw']
-        
-        axes[idx].hist(voltages, bins=100, edgecolor='black', alpha=0.7)
-        axes[idx].set_title(f'{layer_name} - Voltage Distribution (n={len(voltages):,})')
-        axes[idx].set_xlabel('Membrane Potential (V)')
-        axes[idx].set_ylabel('Count')
-        axes[idx].axvline(s['voltage_mean'], color='r', linestyle='--', label=f"Mean: {s['voltage_mean']:.3f}")
-        axes[idx].axvline(s['voltage_median'], color='g', linestyle='--', label=f"Median: {s['voltage_median']:.3f}")
-        axes[idx].legend()
-        axes[idx].grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'voltage_distributions.png'), dpi=150)
-    plt.close()
-    
-    # 2. Per-channel voltage ranges
+    # 1. Per-channel voltage ranges
     fig, axes = plt.subplots(num_layers, 1, figsize=(14, 4*num_layers))
     if num_layers == 1:
         axes = [axes]
@@ -411,9 +439,7 @@ def generate_visualizations(stats, output_dir):
     for idx, layer_name in enumerate(sorted(stats.keys())):
         s = stats[layer_name]
         channels = np.arange(s['num_channels'])
-        mins = s['channel_voltage_mins']
-        maxs = s['channel_voltage_maxs']
-        ranges = maxs - mins
+        ranges = s['channel_voltage_ranges']
         
         axes[idx].bar(channels, ranges, edgecolor='black', alpha=0.7)
         axes[idx].set_title(f'{layer_name} - Per-Channel Voltage Range')
@@ -425,7 +451,7 @@ def generate_visualizations(stats, output_dir):
     plt.savefig(os.path.join(output_dir, 'channel_voltage_ranges.png'), dpi=150)
     plt.close()
     
-    # 3. Per-channel spike rates
+    # 2. Per-channel spike rates
     fig, axes = plt.subplots(num_layers, 1, figsize=(14, 4*num_layers))
     if num_layers == 1:
         axes = [axes]
@@ -449,7 +475,7 @@ def generate_visualizations(stats, output_dir):
     plt.savefig(os.path.join(output_dir, 'channel_spike_rates.png'), dpi=150)
     plt.close()
     
-    # 4. Voltage statistics summary
+    # 3. Voltage statistics summary
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     
     layer_names = sorted(stats.keys())
@@ -502,16 +528,15 @@ def generate_visualizations(stats, output_dir):
     plt.savefig(os.path.join(output_dir, 'voltage_summary.png'), dpi=150)
     plt.close()
     
-    # 5. Spike rate distribution (NEW: shows how many neurons have each spike rate)
+    # 4. Spike rate distribution (per-neuron)
     fig, axes = plt.subplots(num_layers, 1, figsize=(12, 4*num_layers))
     if num_layers == 1:
         axes = [axes]
     
     for idx, layer_name in enumerate(sorted(stats.keys())):
         s = stats[layer_name]
-        spike_rates = s['per_neuron_spike_rates'].flatten() * 100  # Flatten and convert to percentage
+        spike_rates = s['per_neuron_spike_rates'].flatten() * 100
         
-        # Histogram of spike rates
         axes[idx].hist(spike_rates, bins=50, edgecolor='black', alpha=0.7, color='purple')
         axes[idx].set_title(f'{layer_name} - Spike Rate Distribution (Per-Neuron)')
         axes[idx].set_xlabel('Spike Rate (%)')
@@ -534,7 +559,7 @@ def generate_visualizations(stats, output_dir):
     plt.savefig(os.path.join(output_dir, 'spike_rate_distribution.png'), dpi=150)
     plt.close()
     
-    # 6. Neuron utilization summary (stacked bar chart showing categories)
+    # 5. Neuron utilization summary (stacked bar chart showing categories)
     fig, axes = plt.subplots(1, 1, figsize=(12, 6))
     
     layer_names = sorted(stats.keys())
@@ -571,12 +596,12 @@ def generate_visualizations(stats, output_dir):
     plt.savefig(os.path.join(output_dir, 'neuron_utilization.png'), dpi=150)
     plt.close()
     
-    print(f"  - voltage_distributions.png")
     print(f"  - channel_voltage_ranges.png")
     print(f"  - channel_spike_rates.png")
     print(f"  - voltage_summary.png")
     print(f"  - spike_rate_distribution.png")
     print(f"  - neuron_utilization.png")
+    print(f"  (Note: Voltage distribution histograms skipped for memory efficiency with streaming stats)")
 
 
 def save_statistics_csv(stats, output_dir):
@@ -591,27 +616,21 @@ def save_statistics_csv(stats, output_dir):
         # Header - ENHANCED with neuron utilization metrics
         writer.writerow([
             'Layer', 'Voltage Min', 'Voltage Max', 'Voltage Mean', 'Voltage Std',
-            'Voltage Q5', 'Voltage Median', 'Voltage Q95', 'Voltage Range',
             'Global Spike Rate (%)', 
             'Channels Dead', 'Channels <1%', 'Channels <5%', 'Channels <20%',
             'Neurons Dead', 'Neurons <1%', 'Neurons <5%', 'Neurons <20%', 'Total Neurons',
-            'Num Channels', 'Num Samples'
+            'Num Channels'
         ])
         
         # Data
         for layer_name in sorted(stats.keys()):
             s = stats[layer_name]
-            v_range = s['voltage_max'] - s['voltage_min']
             writer.writerow([
                 layer_name,
                 f"{s['voltage_min']:.6f}",
                 f"{s['voltage_max']:.6f}",
                 f"{s['voltage_mean']:.6f}",
                 f"{s['voltage_std']:.6f}",
-                f"{s['voltage_q5']:.6f}",
-                f"{s['voltage_median']:.6f}",
-                f"{s['voltage_q95']:.6f}",
-                f"{v_range:.6f}",
                 f"{s['spike_rate_global']*100:.2f}",
                 s['channels_dead'],
                 s['channels_very_low'],
@@ -623,7 +642,6 @@ def save_statistics_csv(stats, output_dir):
                 s['neurons_moderate'],
                 s['total_neurons'],
                 s['num_channels'],
-                s['num_samples'],
             ])
     
     print(f"  - voltage_statistics.csv")

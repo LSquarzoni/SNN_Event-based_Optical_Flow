@@ -70,27 +70,36 @@ class LIFFireNet(BaseModel):
         
         quantization_config = unet_kwargs.get("quantization", {})
         exporting = self.exporting  # Use the stored export mode flag
+        
+        # TEBN configuration
+        tebn_config = unet_kwargs.get("tebn", {})
+        tebn_enabled = tebn_config.get("enabled", False) if isinstance(tebn_config, dict) else tebn_config
+        num_timesteps = tebn_config.get("num_timesteps", 4) if isinstance(tebn_config, dict) else 4
+        
+        # MPBN configuration
+        mpbn_config = unet_kwargs.get("mpbn", {})
+        mpbn_enabled = mpbn_config.get("enabled", False) if isinstance(mpbn_config, dict) else mpbn_config
 
-        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting)
+        self.head = self.head_neuron(self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled)
 
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         self.R1b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         self.R2b = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
 
         self.pred = ConvLayer(
@@ -242,24 +251,33 @@ class LIFFireNet_short(BaseModel):
         
         quantization_config = unet_kwargs.get("quantization", {})
         exporting = self.exporting  # Use the stored export mode flag
+        
+        # TEBN configuration
+        tebn_config = unet_kwargs.get("tebn", {})
+        tebn_enabled = tebn_config.get("enabled", False) if isinstance(tebn_config, dict) else tebn_config
+        num_timesteps = tebn_config.get("num_timesteps", 4) if isinstance(tebn_config, dict) else 4
+        
+        # MPBN configuration
+        mpbn_config = unet_kwargs.get("mpbn", {})
+        mpbn_enabled = mpbn_config.get("enabled", False) if isinstance(mpbn_config, dict) else mpbn_config
 
         self.head = self.head_neuron(
-            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            self.num_bins, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         
         self.G1 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         self.R1a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         # R1b removed
 
         self.G2 = self.rec_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         self.R2a = self.ff_neuron(
-            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting
+            base_num_channels, base_num_channels, kernel_size, quantization_config=quantization_config, exporting=exporting, tebn=tebn_enabled, num_timesteps=num_timesteps, mpbn=mpbn_enabled
         )
         # R2b removed
 
