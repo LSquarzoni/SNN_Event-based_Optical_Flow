@@ -25,10 +25,10 @@ model:
         PTQ: False 
         Conv_only: False
     tebn:
-        enabled: true      # Enable TEBN
+        enabled: False      # Enable TEBN
         num_timesteps: 4   # Learnable weights for timesteps 0-3
     mpbn:
-        enabled: true
+        enabled: True
 
 spiking_neuron:
     leak: [0.0, 1.0]

@@ -303,14 +303,17 @@ class SNNtorch_ConvLIF(nn.Module):
         # Apply snn.Leaky neuron
         spk, mem_out = self.lif(ff, mem)
 
-        # Normalize membrane potential if MPBN is enabled
-        # This stabilizes the dynamics and can be fused into the threshold at inference
-        if self.mpbn_enabled:
-            mem_out = self.mpbn(mem_out)
-
         # Detach the output membrane potential to ensure clean state transitions
+        # This breaks recurrent gradient flow between timesteps
         if self.detach:
             self.lif.detach_hidden()
+            mem_out = mem_out.detach()
+
+        # Normalize membrane potential if MPBN is enabled
+        # Applied AFTER detach so gradients flow through MPBN within current timestep
+        # but not recurrently across timesteps
+        if self.mpbn_enabled:
+            mem_out = self.mpbn(mem_out)
 
         # Create new state compatible with original interface
         new_state = torch.stack([mem_out, spk], dim=0)
@@ -544,14 +547,17 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         # Apply snn.Leaky neuron
         spk_out, mem_out = self.lif(total_current, mem)
 
-        # Normalize membrane potential if MPBN is enabled
-        # This stabilizes the dynamics and can be fused into the threshold at inference
-        if self.mpbn_enabled:
-            mem_out = self.mpbn(mem_out)
-
         # Detach the output membrane potential to ensure clean state transitions
+        # This breaks recurrent gradient flow between timesteps
         if self.detach:
             self.lif.detach_hidden()
+            mem_out = mem_out.detach()
+
+        # Normalize membrane potential if MPBN is enabled
+        # Applied AFTER detach so gradients flow through MPBN within current timestep
+        # but not recurrently across timesteps
+        if self.mpbn_enabled:
+            mem_out = self.mpbn(mem_out)
 
         # Create new state compatible with original interface
         new_state = torch.stack([mem_out, spk_out], dim=0)

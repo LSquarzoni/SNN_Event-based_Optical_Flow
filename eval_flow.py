@@ -131,7 +131,8 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_128x128/5/model.pth" # runid: 84cfb35b11e749d891d8d17b56fa75e0
     
     # NORMALIZATION MODELS:
-    model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
+    #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
+    model_path_dir = "mlruns/0/models/LIFFN_TEBN/30/model.pth" # runid: 4dbd002b28d448f59d620c2d94626907
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
