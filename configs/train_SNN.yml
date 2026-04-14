@@ -28,7 +28,7 @@ model:
         enabled: False      # Enable TEBN
         num_timesteps: 4   # Learnable weights for timesteps 0-3
     mpbn:
-        enabled: True
+        enabled: False
 
 spiking_neuron:
     leak: [0.0, 1.0]

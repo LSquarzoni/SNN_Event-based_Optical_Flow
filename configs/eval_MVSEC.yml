@@ -13,7 +13,7 @@ model:
         PTQ: False # Post Training Quantization enabled or not
         Conv_only: False
     tebn:
-        enabled: True      # Enable TEBN
+        enabled: False      # Enable TEBN
         num_timesteps: 4   # Learnable weights for timesteps 0-3
     mpbn:
         enabled: False

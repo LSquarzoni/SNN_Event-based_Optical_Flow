@@ -247,7 +247,9 @@ class SNNtorch_ConvLIF(nn.Module):
         if tebn:
             self.bn = TEBN(hidden_size, num_timesteps=num_timesteps, momentum=0.1, eps=1e-5)
         else:
-            self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+            self.bn = nn.GroupNorm(num_groups=max(1, hidden_size // 8), num_channels=hidden_size)
+            # self.bn = nn.LayerNorm(hidden_size)
+            # self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
         
         self.tebn_enabled = tebn
         self.num_timesteps = num_timesteps
@@ -470,7 +472,9 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
         if tebn:
             self.bn = TEBN(hidden_size, num_timesteps=num_timesteps, momentum=0.1, eps=1e-5)
         else:
-            self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+            self.bn = nn.GroupNorm(num_groups=max(1, hidden_size // 8), num_channels=hidden_size)
+            # self.bn = nn.LayerNorm(hidden_size)
+            # self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
         
         self.tebn_enabled = tebn
         self.num_timesteps = num_timesteps
