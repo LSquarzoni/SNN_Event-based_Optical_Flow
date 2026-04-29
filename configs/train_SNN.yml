@@ -16,7 +16,7 @@ model:
     round_encoding: False # for voxel encoding
     norm_input: False # normalize input
     num_bins: 2
-    base_num_channels: 32
+    base_num_channels: 8
     kernel_size: 3
     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
     mask_output: True
@@ -45,11 +45,6 @@ loss:
 optimizer:
     name: Adam
     lr: 0.0002
-    # name: SGD
-    # lr: 0.0001  # Lower than Adam, start conservative
-    # momentum: 0.9
-    # weight_decay: 0.0001  # Small regularization helps stability
-    # nesterov: True  # Nesterov momentum is smoother
 
 loader:
     n_epochs: 100

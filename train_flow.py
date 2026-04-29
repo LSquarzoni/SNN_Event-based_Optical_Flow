@@ -90,6 +90,10 @@ def train(args, config_parser):
     grads_w = []
     checkpoint_counter = 0  # Counter for checkpoint folders
     last_checkpoint_path = None  # Path to the last saved checkpoint
+    
+    """ # Anti-overfitting tracking
+    consecutive_small_loss_decrease = 0
+    min_loss_decrease_threshold = 1e-4  # Threshold to detect plateau """
 
     # training loop
     data.shuffle()
@@ -114,6 +118,19 @@ def train(args, config_parser):
                     # Use training loss for model selection
                     current_metric = avg_train_loss
                     best_metric = best_loss
+                    
+                    """ # Track loss decrease for overfitting detection
+                    loss_decrease = best_loss - current_metric
+                    if loss_decrease < min_loss_decrease_threshold:
+                        consecutive_small_loss_decrease += 1
+                        print(f"  Warning: Small loss decrease ({loss_decrease:.6f}). Overfitting risk: {consecutive_small_loss_decrease}/5")
+                    else:
+                        consecutive_small_loss_decrease = 0
+                    
+                    # Trigger early stopping if loss barely decreases for 5 epochs (late-stage overfitting)
+                    if consecutive_small_loss_decrease >= 5:
+                        print(f"  Early stopping: Loss plateaued for {consecutive_small_loss_decrease} epochs")
+                        end_train = True """
 
                     # Save model if metric improves
                     if current_metric < best_metric - 1e-6:
@@ -126,7 +143,7 @@ def train(args, config_parser):
                                 print(f"Warning: Could not delete previous checkpoint: {e}")
                         
                         # Create new checkpoint folder with incremented counter
-                        base_model_path = "mlruns/0/models/LIFFN_GN/"
+                        base_model_path = "mlruns/0/models/LIFFN_BN_8ch/"
                         model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
                         
                         try:

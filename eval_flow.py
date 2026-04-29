@@ -121,9 +121,6 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short/11/model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
     
-    # VALIDATED TRAINING:
-    #model_path_dir = "mlruns/0/models/LIFFN_validation_loss/" # runid: 
-    
     # 256x256 DATASET:
     #model_path_dir = "mlruns/0/models/LIFFN_256x256//model.pth" # runid: 97538a1b16bb4eed982a4da6db8bad16
     
@@ -131,9 +128,19 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_128x128/5/model.pth" # runid: 84cfb35b11e749d891d8d17b56fa75e0
     
     # NORMALIZATION MODELS:
-    #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
     #model_path_dir = "mlruns/0/models/LIFFN_TEBN/30/model.pth" # runid: 4dbd002b28d448f59d620c2d94626907
-    model_path_dir = "mlruns/0/models/LIFFN_MPBN/27/model.pth" # runid: 4a07c11db1f04d50ae354b0919471be4
+    #model_path_dir = "mlruns/0/models/LIFFN_MPBN/27/model.pth" # runid: 4a07c11db1f04d50ae354b0919471be4
+    #model_path_dir = "mlruns/0/models/LIFFN_GN/48/model.pth" # runid: 5be494fe70934ca4b5585df4d1384e53
+    #model_path_dir = "mlruns/0/models/LIFFN_GN2/25/model.pth" # runid: d48a0fecb3744a878094155524f3cd91
+    
+    #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch/30/model.pth" # runid: 66c2e7eb3dd747b3a3ae529768871836
+    model_path_dir = "mlruns/0/models/LIFFN_BN_8ch//model.pth" # runid: 5beef02b4ac2463dae9c68dd90c03fb9
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_4ch//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_short//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch_short//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_8ch_short//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_4ch_short//model.pth" # runid:
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
