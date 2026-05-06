@@ -440,6 +440,17 @@ class BaseValidationLoss(torch.nn.Module):
         self._pol_mask_list = None
         self._event_mask = None
 
+    def get_error_map(self):
+        """
+        Get the last computed per-pixel error map (before masking/averaging).
+        This is used for visualization of error heatmaps.
+        
+        :return: error_map [H x W] on CPU numpy array, or None if not yet computed
+        """
+        if hasattr(self, '_last_error_map') and self._last_error_map is not None:
+            return self._last_error_map.detach().cpu().numpy()
+        return None
+
     def compute_window_events(self):
         idx = self._event_list[:, :, 1:3].clone()
         idx[:, :, 0] *= self.res[1]  # torch.view is row-major
@@ -727,6 +738,9 @@ class AAE(BaseValidationLoss):
 
         # Apply masks
         mask = event_mask & gtflow_mask
+        
+        # Store error map for visualization (before masking)
+        self._last_error_map = error.detach()
         
         # Accumulate full error heatmap (before final masking for averaging)
         full_mask = mask.float()

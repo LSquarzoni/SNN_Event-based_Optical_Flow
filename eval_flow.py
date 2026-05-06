@@ -223,6 +223,7 @@ def test(args, config_parser):
                     iwe_window_vis = None
                     events_window_vis = None
                     masked_window_flow_vis = None
+                    error_map_vis = None  # Initialize error map
                     if "metrics" in config.keys():
                         # event flow association
                         for metric in criteria:
@@ -244,6 +245,10 @@ def test(args, config_parser):
                                 if metric == "AEE":
                                     idx_AEE = 0
                                 
+                                # Extract error map immediately after metric computation (for visualization)
+                                if metric == "AAE":
+                                    error_map_vis = criteria[i].get_error_map()
+                                
                                 # accumulate results
                                 for batch in range(config["loader"]["batch_size"]):
                                     filename = data.files[data.batch_idx[batch] % len(data.files)].split("/")[-1]
@@ -264,13 +269,14 @@ def test(args, config_parser):
                                 # visualize
                                 if (
                                     i == 0
-                                    and config["data"]["mode"] == "events"
                                     and (config["vis"]["enabled"] or config["vis"]["store"])
                                     and config["data"]["window"] < config["data"]["window_eval"]
                                 ):
-                                    events_window_vis = criteria[i].compute_window_events()
-                                    iwe_window_vis = criteria[i].compute_window_iwe()
-                                    masked_window_flow_vis = criteria[i].compute_masked_window_flow()
+                                    # Prepare visualization data (works for both events and gtflow modes)
+                                    if config["data"]["mode"] == "events":
+                                        events_window_vis = criteria[i].compute_window_events()
+                                        iwe_window_vis = criteria[i].compute_window_iwe()
+                                        masked_window_flow_vis = criteria[i].compute_masked_window_flow()
                                 # reset criteria
                                 criteria[i].reset()
                     # visualize
@@ -290,6 +296,7 @@ def test(args, config_parser):
                             flow_vis,           # masked flow for masked visualizations
                             iwe_window_vis,
                             ts=data.last_proc_timestamp,
+                            error_map=error_map_vis,
                         )
                     if config["vis"]["activity"]:
                         activity_log = vis_activity(x["activity"], activity_log)

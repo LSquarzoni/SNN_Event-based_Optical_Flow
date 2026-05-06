@@ -216,7 +216,7 @@ class Visualization:
 
         cv2.waitKey(1)
 
-    def store(self, inputs, flow, iwe, sequence, events_window=None, masked_window_flow=None, iwe_window=None, ts=None):
+    def store(self, inputs, flow, iwe, sequence, events_window=None, masked_window_flow=None, iwe_window=None, ts=None, error_map=None):
         """
         Store rendered images.
         :param inputs: dataloader dictionary
@@ -224,6 +224,7 @@ class Visualization:
         :param iwe: [batch_size x 1 x H x W] image of warped events
         :param sequence: filename of the event sequence under analysis
         :param ts: timestamp associated with rendered files (default = None)
+        :param error_map: [H x W] per-pixel error map (e.g., AAE) for heatmap visualization
         """
 
         events = inputs["event_cnt"] if "event_cnt" in inputs.keys() else None
@@ -267,6 +268,7 @@ class Visualization:
             os.makedirs(path_to + "flow/")
             os.makedirs(path_to + "masked_flow_grad/")
             os.makedirs(path_to + "masked_flow_vec/")
+            os.makedirs(path_to + "error_heatmap/")
             os.makedirs(path_to + "stitched/")
             if self.store_file is not None:
                 self.store_file.close()
@@ -315,23 +317,11 @@ class Visualization:
         elif events_frame.shape[2] == 3:
             events_frame = cv2.cvtColor(events_frame, cv2.COLOR_RGB2BGR)
         
-        frames_frame = None
         flow_frame = None
         gtflow_frame = None
+        error_frame = None
 
-        # input frames - prepare for both individual storage and stitched output
-        if frames is not None:
-            frames = frames.detach()
-            frames_npy = frames.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
-            # Use the current frame (second channel)
-            current_frame = frames_npy[:, :, 1]
-            
-            # Save individual frame
-            filename = path_to + "frames/%09d.png" % self.img_idx
-            cv2.imwrite(filename, current_frame)
-            
-            # Prepare frame for stitched output (convert grayscale to BGR)
-            frames_frame = cv2.cvtColor(current_frame, cv2.COLOR_GRAY2BGR)
+        # input frames - removed (frames not loaded in gtflow mode)
 
         # full estimated flow (gradient-based)
         if flow is not None:
@@ -447,9 +437,50 @@ class Visualization:
             gtflow_img_masked = self.flow_to_image(gtflow_masked[:, :, 0], gtflow_masked[:, :, 1])
             gtflow_frame_masked = cv2.cvtColor(gtflow_img_masked, cv2.COLOR_RGB2BGR)
 
+        # Error heatmap visualization (if error_map provided)
+        error_frame_masked = None
+        if error_map is not None:
+            # Convert torch tensor to numpy if needed
+            if hasattr(error_map, 'cpu'):
+                error_map_np = error_map.detach().cpu().numpy()
+            else:
+                error_map_np = error_map
+            
+            # Ensure proper shape [H, W]
+            if error_map_np.ndim == 3:
+                error_map_np = error_map_np[0, :, :]  # Take first batch
+            elif error_map_np.ndim == 4:
+                error_map_np = error_map_np[0, 0, :, :]  # Take first batch, first channel
+            
+            # Convert error map to heatmap visualization
+            error_heatmap_rgb = self.error_to_image(error_map_np)
+            
+            # Apply event mask to show error only where events occurred
+            if event_mask_np is not None:
+                # Mask the error heatmap: set masked-out pixels to black
+                # Expand mask from [H, W] to [H, W, 3] for RGB operation
+                mask_expanded = np.expand_dims(event_mask_np, axis=2)
+                # Scale mask to 0-1 range and multiply, keeping uint8
+                error_heatmap_rgb = (error_heatmap_rgb.astype(np.float32) * mask_expanded).astype(np.uint8)
+            
+            error_frame_masked = cv2.cvtColor(error_heatmap_rgb, cv2.COLOR_RGB2BGR)
+            
+            # Save error heatmap to individual file
+            if self.store_type == "image":
+                filename = path_to + "error_heatmap/%09d.png" % self.img_idx
+                cv2.imwrite(filename, error_frame_masked)
+            elif self.store_type == "video":
+                if "error_heatmap" not in self.video_writers:
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    fps = 30
+                    shape = (error_map_np.shape[1], error_map_np.shape[0])
+                    self.video_writers["error_heatmap"] = cv2.VideoWriter(path_to + "error_heatmap/error_heatmap.mp4", fourcc, fps, shape)
+                self.video_writers["error_heatmap"].write(error_frame_masked)
+
         # Create stitched output (four panels side-by-side)
-        # Order: RGB frames → events → filtered ground truth flow → filtered model output flow
-        frames_to_stitch = [frames_frame, events_frame, gtflow_frame_masked, flow_frame_masked]
+        # Order: events → filtered ground truth flow → filtered model output flow → filtered error heatmap
+        frames_to_stitch = [events_frame, gtflow_frame_masked, flow_frame_masked, error_frame_masked]
+        labels = ["Input Events", "Ground-Truth Flow", "Predicted Flow", "Error (AAE) Heatmap"]
         
         if any(f is not None for f in frames_to_stitch):
             # compute target heights/widths
@@ -458,6 +489,8 @@ class Visualization:
             heights = [f.shape[0] for f in present]
             max_h = max(heights)
             default_w = max(widths) if widths else 1
+            
+            border_thickness = 3  # White border thickness in pixels
 
             padded = []
             for idx, f in enumerate(frames_to_stitch):
@@ -472,9 +505,43 @@ class Visualization:
                     else:
                         pad = f.copy()
                 
+                # Add white border around this frame
+                pad = cv2.copyMakeBorder(pad, border_thickness, border_thickness, border_thickness, border_thickness, 
+                                         cv2.BORDER_CONSTANT, value=(255, 255, 255))
                 padded.append(pad)
 
             stitched_img = cv2.hconcat(padded)
+            
+            # Add label bar at the top
+            label_height = 50
+            label_bg = np.zeros((label_height, stitched_img.shape[1], 3), dtype=np.uint8)
+            # Fill with white background
+            label_bg[:, :] = (255, 255, 255)  # White background
+            
+            # Add labels (centered above each frame)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.7
+            font_color = (0, 0, 0)  # Black text
+            thickness = 2
+            
+            # Calculate frame width including borders
+            frame_width_with_border = padded[0].shape[1]
+            
+            for idx, label in enumerate(labels):
+                # Get text size to center it
+                text_size = cv2.getTextSize(label, font, font_scale, thickness)[0]
+                text_w, text_h = text_size[0], text_size[1]
+                
+                # Calculate x position (center of each frame)
+                x = idx * frame_width_with_border + (frame_width_with_border - text_w) // 2
+                # Calculate y position (centered vertically in label bar)
+                y = (label_height + text_h) // 2
+                
+                # Put text on label background
+                cv2.putText(label_bg, label, (x, y), font, font_scale, font_color, thickness)
+            
+            # Combine label bar with stitched frames
+            stitched_img = cv2.vconcat([label_bg, stitched_img])
 
             # Some codecs require even frame dimensions. Pad to even width/height if needed.
             sh, sw = stitched_img.shape[0], stitched_img.shape[1]
@@ -520,6 +587,51 @@ class Visualization:
         return scaled
 
     @staticmethod
+    def error_to_image(error_map):
+        """
+        Convert per-pixel error map to a red gradient heatmap visualization.
+        Red gradient: black (low error) -> bright red (high error)
+        
+        :param error_map: [H x W] per-pixel error values
+        :return error_rgb: [H x W x 3] RGB uint8 heatmap image
+        """
+        # Handle both 2D and 3D input (batch dimension)
+        if error_map.ndim == 3:
+            error_map = error_map[0, :, :]  # Take first batch if needed
+        
+        # Normalize error to [0, 1] using robust method
+        error_flat = error_map.flatten()
+        error_min = float(np.min(error_flat))
+        error_max = float(np.max(error_flat))
+        error_range = error_max - error_min
+        
+        # Handle case where all errors are the same or very similar
+        if error_range < 1e-6:
+            # All values are essentially the same - use uniform color
+            norm_error = np.ones_like(error_map) * 0.5
+        else:
+            # Use percentile-based normalization for robustness to outliers
+            valid_mask = ~np.isnan(error_flat) & ~np.isinf(error_flat)
+            p5 = float(np.percentile(error_flat[valid_mask], 5)) if np.any(valid_mask) else error_min
+            p95 = float(np.percentile(error_flat[valid_mask], 95)) if np.any(valid_mask) else error_max
+            p95_range = p95 - p5
+            
+            if p95_range < 1e-6:
+                # Percentiles are very close, use min-max instead
+                norm_error = (error_map - error_min) / (error_range + 1e-8)
+            else:
+                # Use percentile-based normalization
+                norm_error = np.clip((error_map - p5) / (p95_range + 1e-8), 0.0, 1.0)
+        
+        # Create pure red gradient: R=intensity, G=0, B=0
+        H, W = error_map.shape
+        error_rgb = np.zeros((H, W, 3), dtype=np.uint8)
+        error_rgb[:, :, 0] = (norm_error * 255).astype(np.uint8)  # Red channel
+        
+        return error_rgb
+
+
+    @staticmethod
     def flow_to_image(flow_x, flow_y, uniform_v=None):
         """
         Use the optical flow color scheme from the supplementary materials of the paper 'Back to Event
@@ -562,8 +674,8 @@ class Visualization:
             norm_mag = np.power(norm_mag, 0.5)
             
             # Add brightness floor and scale to prevent black regions
-            # Floor at 0.2 ensures even minimal flow is visible
-            hsv[:, :, 2] = np.clip(norm_mag * 1.3 + 0.15, 0.15, 1.0)
+            # But preserve true zeros (where mag == 0) as completely black
+            hsv[:, :, 2] = np.where(mag > 0, np.clip(norm_mag * 1.3 + 0.15, 0.15, 1.0), 0.0)
         else:
             # Uniform magnitude across the field. If magnitude is non-zero,
             # show it with a scaled brightness so it isn't full-white by
@@ -574,7 +686,8 @@ class Visualization:
                     v = v * float(uniform_v)
                 # Apply same brightness enhancement for consistency
                 v = np.power(v, 0.5) * 1.3 + 0.15
-                hsv[:, :, 2] = np.clip(v, 0.15, 1.0)
+                # Preserve true zeros as black
+                hsv[:, :, 2] = np.where(mag > 0, np.clip(v, 0.15, 1.0), 0.0)
             else:
                 hsv[:, :, 2] = 0.0
 
