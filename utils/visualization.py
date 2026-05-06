@@ -29,6 +29,9 @@ class Visualization:
         self.video_writers = {}
         # flow scaling factor to convert from model's internal representation to pixels
         self.flow_scaling = float(kwargs.get("metrics", {}).get("flow_scaling", 1.0))
+        # standard resolution for upsampling visualization frames
+        std_res = kwargs.get("loader", {}).get("std_resolution", [256, 256])
+        self.std_resolution = (std_res[1], std_res[0])  # (W, H) for cv2.resize
 
         if eval_id >= 0 and path_results is not None:
             self.store_dir = path_results + "results/"
@@ -482,6 +485,9 @@ class Visualization:
         frames_to_stitch = [events_frame, gtflow_frame_masked, flow_frame_masked, error_frame_masked]
         labels = ["Input Events", "Ground-Truth Flow", "Predicted Flow", "Error (AAE) Heatmap"]
         
+        # Upsample all frames to standard resolution for consistent visualization
+        frames_to_stitch = [self._upsample_frame(f) for f in frames_to_stitch]
+        
         if any(f is not None for f in frames_to_stitch):
             # compute target heights/widths
             present = [f for f in frames_to_stitch if f is not None]
@@ -586,47 +592,55 @@ class Visualization:
         scaled = (img.astype(np.float32) * f).clip(0, 255).astype(np.uint8)
         return scaled
 
+    def _upsample_frame(self, frame):
+        """
+        Upsample frame to standard resolution if needed using nearest-neighbor interpolation.
+        This preserves sharp color boundaries in flow/error visualizations without blurring.
+        
+        :param frame: [H x W x 3] or [H x W] image array (uint8)
+        :return: upsampled frame at std_resolution using nearest-neighbor, or original if already large enough
+        """
+        if frame is None:
+            return None
+        
+        current_h, current_w = frame.shape[:2]
+        target_w, target_h = self.std_resolution
+        
+        # Only upsample if current resolution is smaller than target
+        if current_h < target_h or current_w < target_w:
+            # Use INTER_NEAREST to repeat pixels (preserves sharp edges and exact colors)
+            frame_upsampled = cv2.resize(frame, (target_w, target_h), interpolation=cv2.INTER_NEAREST)
+            return frame_upsampled
+        
+        return frame
+
     @staticmethod
     def error_to_image(error_map):
         """
         Convert per-pixel error map to a red gradient heatmap visualization.
-        Red gradient: black (low error) -> bright red (high error)
+        Assumes error_map is in radians (AAE output).
+        Converts to degrees and normalizes to [0°, 180°] range for consistent comparison across models.
+        Red gradient: black (0°, perfect) -> bright red (180°, worst)
         
-        :param error_map: [H x W] per-pixel error values
+        :param error_map: [H x W] per-pixel error values in radians
         :return error_rgb: [H x W x 3] RGB uint8 heatmap image
         """
         # Handle both 2D and 3D input (batch dimension)
         if error_map.ndim == 3:
             error_map = error_map[0, :, :]  # Take first batch if needed
         
-        # Normalize error to [0, 1] using robust method
-        error_flat = error_map.flatten()
-        error_min = float(np.min(error_flat))
-        error_max = float(np.max(error_flat))
-        error_range = error_max - error_min
+        # Convert radians to degrees
+        error_degrees = np.degrees(error_map)
         
-        # Handle case where all errors are the same or very similar
-        if error_range < 1e-6:
-            # All values are essentially the same - use uniform color
-            norm_error = np.ones_like(error_map) * 0.5
-        else:
-            # Use percentile-based normalization for robustness to outliers
-            valid_mask = ~np.isnan(error_flat) & ~np.isinf(error_flat)
-            p5 = float(np.percentile(error_flat[valid_mask], 5)) if np.any(valid_mask) else error_min
-            p95 = float(np.percentile(error_flat[valid_mask], 95)) if np.any(valid_mask) else error_max
-            p95_range = p95 - p5
-            
-            if p95_range < 1e-6:
-                # Percentiles are very close, use min-max instead
-                norm_error = (error_map - error_min) / (error_range + 1e-8)
-            else:
-                # Use percentile-based normalization
-                norm_error = np.clip((error_map - p5) / (p95_range + 1e-8), 0.0, 1.0)
+        # Normalize to [0, 1] using FIXED range [0°, 180°] for consistent cross-model comparison
+        # This ensures all models use the same color scale
+        norm_error = np.clip(error_degrees / 180.0, 0.0, 1.0)
         
         # Create pure red gradient: R=intensity, G=0, B=0
         H, W = error_map.shape
         error_rgb = np.zeros((H, W, 3), dtype=np.uint8)
         error_rgb[:, :, 0] = (norm_error * 255).astype(np.uint8)  # Red channel
+        # Green and Blue stay 0
         
         return error_rgb
 
