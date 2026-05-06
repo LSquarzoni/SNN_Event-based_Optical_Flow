@@ -315,17 +315,23 @@ class Visualization:
         elif events_frame.shape[2] == 3:
             events_frame = cv2.cvtColor(events_frame, cv2.COLOR_RGB2BGR)
         
+        frames_frame = None
         flow_frame = None
-        masked_grad_frame = None
-        masked_vec_frame = None
         gtflow_frame = None
 
-        # input frames
+        # input frames - prepare for both individual storage and stitched output
         if frames is not None:
             frames = frames.detach()
             frames_npy = frames.cpu().numpy().transpose(0, 2, 3, 1).reshape((height, width, 2))
+            # Use the current frame (second channel)
+            current_frame = frames_npy[:, :, 1]
+            
+            # Save individual frame
             filename = path_to + "frames/%09d.png" % self.img_idx
-            cv2.imwrite(filename, frames_npy[:, :, 1])
+            cv2.imwrite(filename, current_frame)
+            
+            # Prepare frame for stitched output (convert grayscale to BGR)
+            frames_frame = cv2.cvtColor(current_frame, cv2.COLOR_GRAY2BGR)
 
         # full estimated flow (gradient-based)
         if flow is not None:
@@ -348,10 +354,11 @@ class Visualization:
                     self.video_writers["flow"] = cv2.VideoWriter(path_to + "flow/flow.mp4", fourcc, fps, shape)
                 self.video_writers["flow"].write(flow_grad_img)
 
-            # store frame for stitched output
+            # store frame for stitched output (will be masked later)
             flow_frame = flow_grad_img
+            flow_frame_for_stitch = flow_npy  # Keep original for masking
 
-        # masked estimated flow (gradient and vector based)
+        # masked estimated flow (gradient-based) - stored separately but not in main stitched output
         if masked_window_flow is not None:
             masked_window_flow = masked_window_flow.detach()
             masked_h, masked_w = masked_window_flow.shape[2], masked_window_flow.shape[3]
@@ -375,46 +382,9 @@ class Visualization:
                     self.video_writers["masked_flow_grad"] = cv2.VideoWriter(path_to + "masked_flow_grad/masked_flow_grad.mp4", fourcc, fps, shape)
                 self.video_writers["masked_flow_grad"].write(masked_grad_img)
 
-            # Vector-based visualization
-            gt_x = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 0] if gtflow is not None else None
-            gt_y = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow.shape[2], gtflow.shape[3], 2))[:, :, 1] if gtflow is not None else None
-            
-            if self.store_type == "image":
-                # For images, use centered single vector with GT overlay
-                masked_vec_img = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0],
-                    masked_window_flow_npy[:, :, 1],
-                    type="sparse",
-                    center=True,
-                    gt_flow_x=gt_x,
-                    gt_flow_y=gt_y,
-                    overlay_gt=True if gtflow is not None else False,
-                    fixed_length=(0.45 * max(masked_h, masked_w)),
-                )
-                filename = path_to + "masked_flow_vec/%09d.png" % self.img_idx
-                cv2.imwrite(filename, masked_vec_img)
-            elif self.store_type == "video":
-                # For videos, use grid of white vectors showing average flow per region
-                masked_vec_img = self.flow_to_vector(
-                    masked_window_flow_npy[:, :, 0],
-                    masked_window_flow_npy[:, :, 1],
-                    type="grid",
-                    grid_size=6,  # 6x6 = 36 regions for 64x64, 12x12 for 256x256
-                    force_white=True,
-                )
-                if "masked_flow_vec" not in self.video_writers:
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    fps = 30
-                    shape = (masked_w, masked_h)
-                    self.video_writers["masked_flow_vec"] = cv2.VideoWriter(path_to + "masked_flow_vec/masked_flow_vec.mp4", fourcc, fps, shape)
-                self.video_writers["masked_flow_vec"].write(masked_vec_img)
-
-            # store frames for stitched output
-            masked_grad_frame = masked_grad_img
-            masked_vec_frame = masked_vec_img
-
         # ground-truth optical flow (gradient-based)
-        # Save full gtflow to separate video/images
+        # Save full gtflow to separate video/images and prepare for stitched output
+        gtflow_npy_for_stitch = None
         if gtflow is not None:
             gtflow = gtflow.detach()
             gtflow_h, gtflow_w = gtflow.shape[2], gtflow.shape[3]
@@ -431,22 +401,55 @@ class Visualization:
                     shape = (gtflow_w, gtflow_h)
                     self.video_writers["gtflow"] = cv2.VideoWriter(path_to + "gtflow/gtflow.mp4", fourcc, fps, shape)
                 self.video_writers["gtflow"].write(gtflow_img)
-        
-        # Create frame for stitched output using gtflow
-        if gtflow is not None:
-            gtflow = gtflow.detach()
-            gtflow_stitch_h, gtflow_stitch_w = gtflow.shape[2], gtflow.shape[3]
-            gtflow_stitch_npy = gtflow.cpu().numpy().transpose(0, 2, 3, 1).reshape((gtflow_stitch_h, gtflow_stitch_w, 2))
             
-            # Visualize the flow
-            gtflow_frame = self.flow_to_image(gtflow_stitch_npy[:, :, 0], gtflow_stitch_npy[:, :, 1])
-            gtflow_frame = cv2.cvtColor(gtflow_frame, cv2.COLOR_RGB2BGR)
-        else:
-            gtflow_frame = None
+            # Keep unmasked version for reference, store masked version for stitched output
+            gtflow_frame = gtflow_img
+            gtflow_npy_for_stitch = gtflow_npy
 
-        # Create stitched output (four panels side-by-side). If any panel is missing, replace it with a black placeholder.
-        # Order: input events → ground truth → masked flow (gradient) → masked flow (vectors with dual arrows)
-        frames_to_stitch = [events_frame, gtflow_frame, masked_grad_frame, masked_vec_frame]
+        # Apply event mask to flows for stitched output (mask both flows by event locations)
+        # This ensures we only show flow predictions where events actually occurred
+        event_mask_np = None
+        if "event_mask" in inputs:
+            event_mask = inputs["event_mask"].detach()
+            event_mask_np = event_mask.cpu().numpy()
+            if event_mask_np.ndim == 4:  # [batch, 1, H, W]
+                event_mask_np = event_mask_np[0, 0, :, :]  # Extract first batch, first channel
+            elif event_mask_np.ndim == 3:  # [batch, H, W]
+                event_mask_np = event_mask_np[0, :, :]  # Extract first batch
+            else:  # [H, W]
+                pass
+
+        # Create masked flow frames for stitching
+        flow_frame_masked = None
+        if 'flow_frame_for_stitch' in locals() and flow_frame_for_stitch is not None:
+            flow_masked = flow_frame_for_stitch.copy()
+            # Apply event mask if available
+            if event_mask_np is not None:
+                # Expand mask to match flow dimensions (2 channels)
+                mask_2d = np.expand_dims(event_mask_np, axis=2)
+                flow_masked = flow_masked * mask_2d
+            
+            # Convert masked flow to image
+            flow_grad_img_masked = self.flow_to_image(flow_masked[:, :, 0], flow_masked[:, :, 1], uniform_v=self.v_uniform)
+            flow_grad_img_masked = self._apply_v_scale(flow_grad_img_masked)
+            flow_frame_masked = cv2.cvtColor(flow_grad_img_masked, cv2.COLOR_RGB2BGR)
+
+        gtflow_frame_masked = None
+        if gtflow_npy_for_stitch is not None:
+            gtflow_masked = gtflow_npy_for_stitch.copy()
+            # Apply event mask if available
+            if event_mask_np is not None:
+                # Expand mask to match flow dimensions
+                mask_2d = np.expand_dims(event_mask_np, axis=2)
+                gtflow_masked = gtflow_masked * mask_2d
+            
+            # Convert masked flow to image
+            gtflow_img_masked = self.flow_to_image(gtflow_masked[:, :, 0], gtflow_masked[:, :, 1])
+            gtflow_frame_masked = cv2.cvtColor(gtflow_img_masked, cv2.COLOR_RGB2BGR)
+
+        # Create stitched output (four panels side-by-side)
+        # Order: RGB frames → events → filtered ground truth flow → filtered model output flow
+        frames_to_stitch = [frames_frame, events_frame, gtflow_frame_masked, flow_frame_masked]
         
         if any(f is not None for f in frames_to_stitch):
             # compute target heights/widths
@@ -522,8 +525,13 @@ class Visualization:
         Use the optical flow color scheme from the supplementary materials of the paper 'Back to Event
         Basics: Self-Supervised Image Reconstruction for Event Cameras via Photometric Constancy',
         Paredes-Valles et al., CVPR'21.
+        
+        Enhanced with percentile-based normalization and power curve boost for better visibility
+        of low-magnitude flows against dark backgrounds.
+        
         :param flow_x: [H x W x 1] horizontal optical flow component
         :param flow_y: [H x W x 1] vertical optical flow component
+        :param uniform_v: scaling factor for uniform fields
         :return flow_rgb: [H x W x 3] color-encoded optical flow
         """
         flows = np.stack((flow_x, flow_y), axis=2)
@@ -539,10 +547,23 @@ class Visualization:
         hsv[:, :, 0] = ang
         hsv[:, :, 1] = 1.0
 
-        # Value channel (brightness) - robust to uniform fields
+        # Value channel (brightness) - enhanced for better visibility
         if mag_range > 0.0:
-            # Normal case: spread values linearly between min and max
-            hsv[:, :, 2] = (mag - min_mag) / mag_range
+            # Use percentile-based normalization instead of min-max
+            # This prevents outliers from compressing the visible range
+            p5 = float(np.percentile(mag, 5))      # 5th percentile as lower threshold
+            p95 = float(np.percentile(mag, 95))    # 95th percentile as upper threshold
+            
+            # Normalize magnitude using percentiles
+            norm_mag = np.clip((mag - p5) / (p95 - p5 + 1e-8), 0.0, 1.0)
+            
+            # Apply power curve (gamma correction) to brighten dim regions
+            # Power of 0.5 = square root (brightens more than linear)
+            norm_mag = np.power(norm_mag, 0.5)
+            
+            # Add brightness floor and scale to prevent black regions
+            # Floor at 0.2 ensures even minimal flow is visible
+            hsv[:, :, 2] = np.clip(norm_mag * 1.3 + 0.15, 0.15, 1.0)
         else:
             # Uniform magnitude across the field. If magnitude is non-zero,
             # show it with a scaled brightness so it isn't full-white by
@@ -551,7 +572,9 @@ class Visualization:
                 v = mag / max_mag
                 if uniform_v is not None:
                     v = v * float(uniform_v)
-                hsv[:, :, 2] = v
+                # Apply same brightness enhancement for consistency
+                v = np.power(v, 0.5) * 1.3 + 0.15
+                hsv[:, :, 2] = np.clip(v, 0.15, 1.0)
             else:
                 hsv[:, :, 2] = 0.0
 

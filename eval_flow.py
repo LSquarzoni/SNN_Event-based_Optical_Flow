@@ -133,14 +133,17 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_GN/48/model.pth" # runid: 5be494fe70934ca4b5585df4d1384e53
     #model_path_dir = "mlruns/0/models/LIFFN_GN2/25/model.pth" # runid: d48a0fecb3744a878094155524f3cd91
     
-    #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
+    model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
     #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch/30/model.pth" # runid: 66c2e7eb3dd747b3a3ae529768871836
-    model_path_dir = "mlruns/0/models/LIFFN_BN_8ch//model.pth" # runid: 5beef02b4ac2463dae9c68dd90c03fb9
-    #model_path_dir = "mlruns/0/models/LIFFN_BN_4ch//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFN_BN_short//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch_short//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFN_BN_8ch_short//model.pth" # runid:
-    #model_path_dir = "mlruns/0/models/LIFFN_BN_4ch_short//model.pth" # runid:
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_8ch/23/model.pth" # runid: 5beef02b4ac2463dae9c68dd90c03fb9
+    #model_path_dir = "mlruns/0/models/LIFFN_BN_4ch/10/model.pth" # runid: 3c0f8ac17d254580a4f0246320bbb095
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN/28/model.pth" # runid: 1b39ec58c0094ee7b8e27c46d46f7935
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_16ch/30/model.pth" # runid: 9de5f4a3c2e442fab8ce686d5afa99ec
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_8ch/18/model.pth" # runid: 23b1cb23745747f590a297d9b0027460
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_4ch//model.pth" # runid: 09911d92cbaf435ba7179e8466156d5c
+    
+    # NEW TRAINING TESTS:
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_16ch/smoothest_loss//model.pth" # runid: 
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     

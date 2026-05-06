@@ -3,6 +3,7 @@ import os
 import shutil
 
 import mlflow
+import numpy as np
 import torch
 from torch.optim import *
 
@@ -91,6 +92,16 @@ def train(args, config_parser):
     checkpoint_counter = 0  # Counter for checkpoint folders
     last_checkpoint_path = None  # Path to the last saved checkpoint
     
+    # Multi-checkpoint tracking: save 3 diverse checkpoints for later evaluation
+    recent_losses = []  # Track losses for variance calculation
+    loss_history_window = 50  # Number of recent batches to track
+    checkpoints = {
+        'lowest_loss': {'loss': float('inf'), 'path': None, 'epoch': None},
+        'smoothest_loss': {'variance': float('inf'), 'path': None, 'epoch': None},
+        'most_recent': {'path': None, 'epoch': None}
+    }
+    base_model_path = "mlruns/0/models/LIFFN_short_BN_4ch/"  # Base path for all checkpoints
+    
     """ # Anti-overfitting tracking
     consecutive_small_loss_decrease = 0
     min_loss_decrease_threshold = 1e-4  # Threshold to detect plateau """
@@ -109,87 +120,98 @@ def train(args, config_parser):
 
             if data.seq_num >= len(data.files):
                 avg_train_loss = train_loss / (data.samples + 1)
+                loss_variance = np.var(recent_losses) if len(recent_losses) > 1 else float('inf')
                 mlflow.log_metric("loss", avg_train_loss, step=data.epoch)
+                mlflow.log_metric("loss_variance", loss_variance, step=data.epoch)
 
                 # Print epoch summary
-                print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f}")
+                print(f"Epoch {data.epoch:04d} - Training Loss: {avg_train_loss:.6f} | Loss Variance: {loss_variance:.6f}")
 
                 with torch.no_grad():
-                    # Use training loss for model selection
-                    current_metric = avg_train_loss
-                    best_metric = best_loss
+                    # Prepare save data
+                    save_data = {
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'epoch': data.epoch,
+                        'loss': avg_train_loss,
+                        'loss_variance': loss_variance,
+                        'config': config
+                    }
                     
-                    """ # Track loss decrease for overfitting detection
-                    loss_decrease = best_loss - current_metric
-                    if loss_decrease < min_loss_decrease_threshold:
-                        consecutive_small_loss_decrease += 1
-                        print(f"  Warning: Small loss decrease ({loss_decrease:.6f}). Overfitting risk: {consecutive_small_loss_decrease}/5")
-                    else:
-                        consecutive_small_loss_decrease = 0
-                    
-                    # Trigger early stopping if loss barely decreases for 5 epochs (late-stage overfitting)
-                    if consecutive_small_loss_decrease >= 5:
-                        print(f"  Early stopping: Loss plateaued for {consecutive_small_loss_decrease} epochs")
-                        end_train = True """
-
-                    # Save model if metric improves
-                    if current_metric < best_metric - 1e-6:
-                        # Delete previous checkpoint folder if it exists
-                        if last_checkpoint_path is not None and os.path.exists(last_checkpoint_path):
-                            try:
-                                shutil.rmtree(last_checkpoint_path)
-                                print(f"Deleted previous checkpoint: {last_checkpoint_path}")
-                            except Exception as e:
-                                print(f"Warning: Could not delete previous checkpoint: {e}")
-                        
-                        # Create new checkpoint folder with incremented counter
-                        base_model_path = "mlruns/0/models/LIFFN_BN_8ch/"
-                        model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
-                        
+                    # Helper function to save checkpoint
+                    def save_checkpoint(checkpoint_type, metric_value):
+                        checkpoint_subdir = os.path.join(base_model_path, checkpoint_type, str(data.epoch))
                         try:
-                            os.makedirs(model_save_path, exist_ok=True)
-                            print(f"Created checkpoint directory: {model_save_path}")
-                        except Exception as e:
-                            print(f"Error creating directory {model_save_path}: {e}")
-                            print(f"Attempting to create parent directory {base_model_path}")
-                            os.makedirs(base_model_path, exist_ok=True)
-                            os.makedirs(model_save_path, exist_ok=True)
-
-                        save_data = {
-                            'model_state_dict': model.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict(),
-                            'epoch': data.epoch,
-                            'loss': avg_train_loss,
-                            'config': config
-                        }
-
-                        model_pth_path = os.path.join(model_save_path, 'model.pth')
-                        try:
-                            # Save to temporary file first, then rename (atomic operation on most filesystems)
+                            os.makedirs(checkpoint_subdir, exist_ok=True)
+                            model_pth_path = os.path.join(checkpoint_subdir, 'model.pth')
+                            
+                            # Save to temporary file first, then rename (atomic)
                             temp_path = model_pth_path + '.tmp'
                             torch.save(save_data, temp_path)
-                            # Rename temp file to final name (more atomic than direct write)
                             os.replace(temp_path, model_pth_path)
-                            print(f"Model checkpoint saved to: {model_pth_path}")
+                            
+                            print(f"  Saved {checkpoint_type} checkpoint (epoch {data.epoch}): {metric_value:.6f}")
                             
                             try:
                                 mlflow.log_artifact(model_pth_path)
                             except Exception as e:
-                                print(f"Warning: Could not log artifact to mlflow: {e}")
+                                print(f"  Warning: Could not log {checkpoint_type} checkpoint to mlflow: {e}")
                             
-                            # Update checkpoint tracking
-                            last_checkpoint_path = model_save_path
-                            checkpoint_counter += 1
+                            return checkpoint_subdir
                         except Exception as e:
-                            print(f"Error saving checkpoint to {model_pth_path}: {e}")
-                            print(f"Available space in {base_model_path}:")
-                            os.system(f"df -h {base_model_path}")
+                            print(f"  Error saving {checkpoint_type} checkpoint: {e}")
                             raise
-
-                        best_loss = current_metric
+                    
+                    # Check and save 'lowest_loss' checkpoint
+                    if avg_train_loss < checkpoints['lowest_loss']['loss']:
+                        # Delete old checkpoint if exists
+                        if checkpoints['lowest_loss']['path'] is not None and os.path.exists(checkpoints['lowest_loss']['path']):
+                            try:
+                                shutil.rmtree(checkpoints['lowest_loss']['path'])
+                            except Exception as e:
+                                print(f"  Warning: Could not delete old lowest_loss checkpoint: {e}")
+                        
+                        # Save new checkpoint
+                        new_path = save_checkpoint('lowest_loss', avg_train_loss)
+                        checkpoints['lowest_loss'] = {
+                            'loss': avg_train_loss,
+                            'path': new_path,
+                            'epoch': data.epoch
+                        }
+                        best_loss = avg_train_loss
                         epochs_without_improvement = 0
                     else:
                         epochs_without_improvement += 1
+                    
+                    # Check and save 'smoothest_loss' checkpoint (lowest variance = most stable)
+                    if loss_variance < checkpoints['smoothest_loss']['variance'] and len(recent_losses) > 10:
+                        # Delete old checkpoint if exists
+                        if checkpoints['smoothest_loss']['path'] is not None and os.path.exists(checkpoints['smoothest_loss']['path']):
+                            try:
+                                shutil.rmtree(checkpoints['smoothest_loss']['path'])
+                            except Exception as e:
+                                print(f"  Warning: Could not delete old smoothest_loss checkpoint: {e}")
+                        
+                        # Save new checkpoint
+                        new_path = save_checkpoint('smoothest_loss', loss_variance)
+                        checkpoints['smoothest_loss'] = {
+                            'variance': loss_variance,
+                            'path': new_path,
+                            'epoch': data.epoch
+                        }
+                    
+                    # Always save 'most_recent' checkpoint (overwrite previous)
+                    if checkpoints['most_recent']['path'] is not None and os.path.exists(checkpoints['most_recent']['path']):
+                        try:
+                            shutil.rmtree(checkpoints['most_recent']['path'])
+                        except Exception as e:
+                            print(f"  Warning: Could not delete old most_recent checkpoint: {e}")
+                    
+                    new_path = save_checkpoint('most_recent', avg_train_loss)
+                    checkpoints['most_recent'] = {
+                        'path': new_path,
+                        'epoch': data.epoch
+                    }
 
                 data.epoch += 1
                 data.samples = 0
@@ -230,6 +252,12 @@ def train(args, config_parser):
 
                 # update number of loss samples seen by the network
                 data.samples += config["loader"]["batch_size"]
+                
+                # Track loss for variance calculation
+                batch_loss = loss.item()
+                recent_losses.append(batch_loss)
+                if len(recent_losses) > loss_history_window:
+                    recent_losses.pop(0)
 
                 loss.backward()
 
