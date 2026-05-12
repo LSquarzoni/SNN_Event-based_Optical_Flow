@@ -371,6 +371,8 @@ class H5Loader(BaseDataLoader):
         output = {}
 
         # Check if downsampling is needed (when target size is smaller than original size)
+        keep_gt_full_res = self.config["loader"].get("keep_gt_full_res", False)
+        
         if (original_height is not None and original_width is not None and 
             (target_height < original_height or target_width < original_width)):
             
@@ -387,7 +389,14 @@ class H5Loader(BaseDataLoader):
             # Apply average pooling to event representations
             output["event_cnt"] = F.avg_pool2d(event_cnt.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
             output["event_voxel"] = F.avg_pool2d(event_voxel.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
-            output["event_mask"] = F.avg_pool2d(event_mask.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+            
+            # Event mask handling
+            if keep_gt_full_res:
+                # Keep original high-resolution mask for error computation at full resolution
+                output["event_mask"] = event_mask
+            else:
+                # Downsample event_mask to match model resolution
+                output["event_mask"] = F.avg_pool2d(event_mask.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
             
             # Scale event_list coordinates to match downsampled resolution
             if event_list.numel() > 0:
@@ -409,8 +418,16 @@ class H5Loader(BaseDataLoader):
                 output["frames"] = center_crop(frames)
             
             # Handle ground truth flow with average pooling
+            # Option to keep GT at full resolution for evaluation while model works at lower resolution
+            keep_gt_full_res = self.config["loader"].get("keep_gt_full_res", False)
             if self.config["data"]["mode"] == "gtflow_dt1" or self.config["data"]["mode"] == "gtflow_dt4":
-                output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
+                if keep_gt_full_res:
+                    # Keep GT flow at full resolution (std_resolution)
+                    # Upsample to full resolution and center-place the downsampled events in the full image
+                    output["gtflow"] = flowmap
+                else:
+                    # Downsample GT flow to match model resolution
+                    output["gtflow"] = F.avg_pool2d(flowmap.unsqueeze(0), kernel_size=(pool_h, pool_w), stride=(pool_h, pool_w)).squeeze(0)
         else:
             # No downsampling needed - output unaltered tensors
             output["event_cnt"] = event_cnt

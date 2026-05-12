@@ -100,7 +100,7 @@ def train(args, config_parser):
         'smoothest_loss': {'variance': float('inf'), 'path': None, 'epoch': None},
         'most_recent': {'path': None, 'epoch': None}
     }
-    base_model_path = "mlruns/0/models/LIFFN_short_BN_4ch/"  # Base path for all checkpoints
+    base_model_path = "mlruns/0/models/LIFFN_short_BN_8ch_2/"  # Base path for all checkpoints
     
     """ # Anti-overfitting tracking
     consecutive_small_loss_decrease = 0
@@ -163,7 +163,7 @@ def train(args, config_parser):
                             raise
                     
                     # Check and save 'lowest_loss' checkpoint
-                    if avg_train_loss < checkpoints['lowest_loss']['loss']:
+                    if avg_train_loss < checkpoints['lowest_loss']['loss'] - 1e-6:  # Require improvement of at least 1e-6 (noise threshold)
                         # Delete old checkpoint if exists
                         if checkpoints['lowest_loss']['path'] is not None and os.path.exists(checkpoints['lowest_loss']['path']):
                             try:

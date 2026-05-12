@@ -152,3 +152,25 @@ def compute_pol_iwe(flow, event_list, res, pos_mask, neg_mask, flow_scaling=128,
     iwe = torch.cat([iwe_pos, iwe_neg], dim=1)
 
     return iwe
+
+
+def upsample_flow(flow, target_height, target_width):
+    """
+    Upsample optical flow using nearest-neighbor interpolation to preserve flow directionality.
+    Each flow pixel is repeated to fill the larger resolution.
+    
+    :param flow: [batch_size x 2 x H x W] optical flow map
+    :param target_height: target height resolution
+    :param target_width: target width resolution
+    :return upsampled_flow: [batch_size x 2 x target_height x target_width] upsampled flow
+    """
+    batch_size, channels, h, w = flow.shape
+    
+    # Use nearest-neighbor interpolation (mode='nearest') to preserve sharp flow boundaries
+    upsampled_flow = torch.nn.functional.interpolate(
+        flow, 
+        size=(target_height, target_width), 
+        mode='nearest'
+    )
+    
+    return upsampled_flow

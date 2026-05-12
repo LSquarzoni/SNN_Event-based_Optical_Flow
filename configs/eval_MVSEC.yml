@@ -46,8 +46,9 @@ metrics:
 
 loader:
     batch_size: 1
-    resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
+    resolution: [128, 128] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center
     std_resolution: [256, 256]
+    keep_gt_full_res: True # if False, GT flow will be downsampled to the same resolution as the input events and frames, if True the output of the model will be upsampled to match GT resolution during evaluation
     augment: []
     gpu: 0
 
@@ -56,7 +57,7 @@ vis:
     px: 400
     bars: True
     activity: False
-    store: True
+    store: False
     store_interval: 0.0  # store every x seconds, 0.0 to disable
     #type: vectors # gradients or vectors
     store_type: video # video or image

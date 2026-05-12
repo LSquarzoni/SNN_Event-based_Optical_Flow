@@ -23,7 +23,7 @@ from models.model import (
     LIFFireFlowNet_short,
     SpikingRecEVFlowNet,
 )
-from utils.iwe import compute_pol_iwe
+from utils.iwe import compute_pol_iwe, upsample_flow
 from utils.utils import load_model, create_model_dir
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization, vis_activity
@@ -140,10 +140,11 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_short_BN/28/model.pth" # runid: 1b39ec58c0094ee7b8e27c46d46f7935
     #model_path_dir = "mlruns/0/models/LIFFN_short_BN_16ch/30/model.pth" # runid: 9de5f4a3c2e442fab8ce686d5afa99ec
     #model_path_dir = "mlruns/0/models/LIFFN_short_BN_8ch/18/model.pth" # runid: 23b1cb23745747f590a297d9b0027460
-    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_4ch//model.pth" # runid: 09911d92cbaf435ba7179e8466156d5c
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_4ch/9/model.pth" # runid: 09911d92cbaf435ba7179e8466156d5c
     
     # NEW TRAINING TESTS:
-    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_16ch/smoothest_loss//model.pth" # runid: 
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_16ch_2/smoothest_loss//model.pth" # runid: 71c14720756d4f2aa2ff957ad96c71fc
+    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_8ch_2/smoothest_loss//model.pth" # runid: e7895ea06daa4b7e9934e37f42730906
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
@@ -156,6 +157,21 @@ def test(args, config_parser):
     if "metrics" in config.keys():
         for metric in config["metrics"]["name"]:
             criteria.append(eval(metric)(config, device, flow_scaling=config["metrics"]["flow_scaling"]))
+    
+    # Update metrics resolution and flow_scaling if keeping GT at full resolution
+    keep_gt_full_res = config["loader"].get("keep_gt_full_res", False)
+    if keep_gt_full_res and criteria:
+        std_resolution = config["loader"].get("std_resolution", config["loader"]["resolution"])
+        model_resolution = config["loader"]["resolution"]
+        base_flow_scaling = config["metrics"]["flow_scaling"]
+        
+        # Adjust flow_scaling proportionally to inference resolution
+        training_resolution = 128  # Models trained at 128×128
+        adjusted_flow_scaling = base_flow_scaling * (model_resolution[0] / training_resolution) / 2
+        
+        for criterion in criteria:
+            criterion.res = std_resolution
+            criterion.flow_scaling = adjusted_flow_scaling
 
     # data loader
     data = H5Loader(config, config["model"]["num_bins"])
@@ -205,12 +221,11 @@ def test(args, config_parser):
                         inputs["event_voxel"].to(device), inputs["event_cnt"].to(device), log=config["vis"]["activity"]
                     )
                     
-                    # mask flow for visualization
+                    # mask flow for visualization (before upsampling, at model resolution)
                     flow_vis_unmasked = x["flow"][-1].clone()
                     flow_vis = x["flow"][-1].clone()
-                    if model.mask:
-                        flow_vis *= inputs["event_mask"].to(device)
-                    # image of warped events
+                    
+                    # image of warped events (computed at model resolution before upsampling)
                     iwe = compute_pol_iwe(
                         x["flow"][-1],
                         inputs["event_list"].to(device),
@@ -220,6 +235,27 @@ def test(args, config_parser):
                         flow_scaling=config["metrics"]["flow_scaling"],
                         round_idx=True,
                     )
+                    
+                    # Upsample predictions if GT is at full resolution and model at lower resolution
+                    keep_gt_full_res = config["loader"].get("keep_gt_full_res", False)
+                    if keep_gt_full_res and "gtflow" in inputs:
+                        gt_flow_h, gt_flow_w = inputs["gtflow"].shape[2], inputs["gtflow"].shape[3]
+                        pred_flow_h, pred_flow_w = x["flow"][-1].shape[2], x["flow"][-1].shape[3]
+                        
+                        # If GT is at higher resolution, upsample predictions to match
+                        if gt_flow_h > pred_flow_h or gt_flow_w > pred_flow_w:
+                            x["flow"][-1] = upsample_flow(x["flow"][-1], gt_flow_h, gt_flow_w)
+                            # Also scale flow values: if spatial dimensions increased by 2x, flow should also increase by 2x
+                            scale_factor_h = gt_flow_h / pred_flow_h
+                            scale_factor_w = gt_flow_w / pred_flow_w
+                            x["flow"][-1][:, 0, :, :] *= scale_factor_h  # Scale y component
+                            x["flow"][-1][:, 1, :, :] *= scale_factor_w  # Scale x component
+                    
+                    # Apply mask after upsampling to ensure dimensions match
+                    flow_vis = x["flow"][-1].clone()
+                    if model.mask:
+                        flow_vis *= inputs["event_mask"].to(device)
+                    
                     iwe_window_vis = None
                     events_window_vis = None
                     masked_window_flow_vis = None
