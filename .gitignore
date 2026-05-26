@@ -11,5 +11,3 @@ exported_models/
 /plots
 /runs
 /voltage_analysis
-TEBN_MPBN_GUIDE.md
-plot_normalization_comparison.py
