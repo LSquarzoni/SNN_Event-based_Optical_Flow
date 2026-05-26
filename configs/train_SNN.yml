@@ -2,7 +2,6 @@ experiment: Default
 
 data:
     path: /usr/scratch/badile13/amarchei/training/ # path to dataset in the server
-    #path: /usr/scratch/badile13/amarchei/training_256x256/ # path to 256x256 dataset
     mode: events # events
     window: 1000 # events
     window_loss: 10000 # events
@@ -22,8 +21,8 @@ model:
     mask_output: True
     quantization:
         enabled: False
-        PTQ: False 
-        Conv_only: False
+        PTQ: False # Post Training Quantization enabled or not
+        Conv_only: False # Only convolutions are quantized, if False also LIFs are quantized
     normalization:
         enabled: False
 

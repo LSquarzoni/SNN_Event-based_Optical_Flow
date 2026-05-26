@@ -17,8 +17,9 @@ def load_model(prev_runid, model, device, model_path_dir="", strict=True):
     except:
         return model
     
-    if model_path_dir == "":
-        model_dir = run.info.artifact_uri + "/model/data/model.pth"
+    if model_path_dir == "": # If no model path provided in the eval_flow.py script, construct it from the run's artifact URI
+        idx = run.info.artifact_uri.find('/mlruns/')
+        model_dir = "." + run.info.artifact_uri[idx:] + "/model.pth"
     else:
         model_dir = model_path_dir
         

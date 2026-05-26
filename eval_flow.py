@@ -28,24 +28,6 @@ from utils.utils import load_model, create_model_dir
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization, vis_activity
 
-def calibrate_model(calibration_loader, quant_model, device, args):
-    quant_model = quant_model.to(device)
-    quant_model.eval()
-    with torch.no_grad():
-        # Put the model in calibration mode to collect statistics
-        # Quantization is automatically disabled during the calibration, and re-enabled at the end
-        with calibration_mode(quant_model):
-            for i, inputs in enumerate(calibration_loader):
-                event_voxel = inputs["event_voxel"].to(device)
-                event_cnt = inputs["event_cnt"].to(device)
-                    
-                print(f'Calibration iteration {i}')
-                quant_model(event_voxel, event_cnt)
-                
-                if i >= 50:  # Calibrate on first 50 batches
-                    break
-    return quant_model
-
 def test(args, config_parser):
     # Set MLflow tracking URI (use local mlruns if not specified)
     if args.path_mlflow:
@@ -109,7 +91,7 @@ def test(args, config_parser):
     # model initialization and settings
     
     # FINAL MODELS: simplification of the LIF code
-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
     #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
     #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
     #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
@@ -127,18 +109,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short/11/model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
     #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
     
-    # 256x256 DATASET:
-    #model_path_dir = "mlruns/0/models/LIFFN_256x256//model.pth" # runid: 97538a1b16bb4eed982a4da6db8bad16
-    
-    # POOLED MODELS:
-    #model_path_dir = "mlruns/0/models/LIFFN_128x128/5/model.pth" # runid: 84cfb35b11e749d891d8d17b56fa75e0
-    
-    # NORMALIZATION MODELS:
-    #model_path_dir = "mlruns/0/models/LIFFN_TEBN/30/model.pth" # runid: 4dbd002b28d448f59d620c2d94626907
-    #model_path_dir = "mlruns/0/models/LIFFN_MPBN/27/model.pth" # runid: 4a07c11db1f04d50ae354b0919471be4
-    #model_path_dir = "mlruns/0/models/LIFFN_GN/48/model.pth" # runid: 5be494fe70934ca4b5585df4d1384e53
-    #model_path_dir = "mlruns/0/models/LIFFN_GN2/25/model.pth" # runid: d48a0fecb3744a878094155524f3cd91
-    
+    # NORMALIZED MODELS:
     #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
     #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch/30/model.pth" # runid: 66c2e7eb3dd747b3a3ae529768871836
     #model_path_dir = "mlruns/0/models/LIFFN_BN_8ch/23/model.pth" # runid: 5beef02b4ac2463dae9c68dd90c03fb9
@@ -148,14 +119,10 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_short_BN_8ch/18/model.pth" # runid: 23b1cb23745747f590a297d9b0027460
     #model_path_dir = "mlruns/0/models/LIFFN_short_BN_4ch/9/model.pth" # runid: 09911d92cbaf435ba7179e8466156d5c
     
-    # NEW TRAINING TESTS:
-    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_16ch_2/smoothest_loss//model.pth" # runid: 71c14720756d4f2aa2ff957ad96c71fc
-    #model_path_dir = "mlruns/0/models/LIFFN_short_BN_8ch_2/smoothest_loss//model.pth" # runid: e7895ea06daa4b7e9934e37f42730906
-    
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
-    #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
-    model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
+    model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+    #model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
     model.eval()
 
     # validation metric
@@ -189,21 +156,6 @@ def test(args, config_parser):
         worker_init_fn=config_parser.worker_init_fn,
         **kwargs,
     )
-    
-    # Quantization calibration for Post Training Uqantization
-    if config['model']['quantization']['PTQ']:
-        model = calibrate_model(dataloader, model, device, args)
-        
-        # Reset the dataloader for actual inference
-        data = H5Loader(config, config["model"]["num_bins"])
-        dataloader = torch.utils.data.DataLoader(
-            data,
-            drop_last=True,
-            batch_size=config["loader"]["batch_size"],
-            collate_fn=data.custom_collate,
-            worker_init_fn=config_parser.worker_init_fn,
-            **kwargs,
-        )
 
     # inference loop
     idx_AEE = 0

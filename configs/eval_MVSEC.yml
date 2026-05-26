@@ -1,6 +1,6 @@
 data:
     path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
-    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/ # path to dataset in the server
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
@@ -11,7 +11,7 @@ model:
     quantization:
         enabled: False
         PTQ: False # Post Training Quantization enabled or not
-        Conv_only: False
+        Conv_only: False # Only convolutions are quantized, if False also LIFs are quantized
     normalization:
         enabled: False
 
