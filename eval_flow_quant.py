@@ -26,6 +26,13 @@ from utils.utils import load_model, load_quantized_model, create_model_dir
 from utils.mlflow import log_config, log_results
 from utils.visualization import Visualization
 
+# Quantization negative bounds for membrane potentials - these are used to clip extreme negative values that would otherwise waste quantization levels and cause numerical instability. 
+# These values are based on the profiling of membrane potential distributions and are chosen to balance coverage of typical values with exclusion of extreme outliers.
+LOWER_NEG_BOUND = -300 # Avoid the voltages to go too negative
+UPPER_NEG_BOUND = -15 # Avoid the voltages not to use negative enough values
+
+# I tried to authomatically determine these bounds based on the profiling results, but without these two
+# bounds the quantization quality drastically decreases
 
 def print_quantization_info(model, config):
     """
@@ -518,9 +525,9 @@ def apply_per_layer_quantization_ranges(model, layer_stats, safety_margin=0.001,
         # This gives smaller step size and better precision
         # Safety margin is subtracted (not added) to make range tighter
         
-        if clip_extreme_negatives and min_obs < -250:
+        if clip_extreme_negatives and min_obs < -LOWER_NEG_BOUND:
             # Clip very extreme negatives to -x (prevents outliers from wasting quantization levels)
-            lower_bound = -250
+            lower_bound = -LOWER_NEG_BOUND
         else:
             # For negative values: round TOWARD zero (less negative) for tighter range
             # e.g., observed -45.7 → -45 (ceil toward zero)
@@ -533,8 +540,8 @@ def apply_per_layer_quantization_ranges(model, layer_stats, safety_margin=0.001,
         
         # Enforce minimum floor of -x for small negative ranges
         # This ensures numerical stability and avoids overly tight ranges
-        if lower_bound > -15:
-            lower_bound = -15
+        if lower_bound > -UPPER_NEG_BOUND:
+            lower_bound = -UPPER_NEG_BOUND
         
         # Upper bound: round TOWARD zero (less positive) for tighter range
         # e.g., observed 0.94 → 0 (floor toward zero)

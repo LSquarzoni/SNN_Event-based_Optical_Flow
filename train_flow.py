@@ -68,13 +68,10 @@ def train(args, config_parser):
 
     # loss function
     loss_function = EventWarping(config, device)
-    
-    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
 
     # model initialization and settings
     model = eval(config["model"]["name"])(config["model"].copy()).to(device)
     model = load_model(args.prev_runid, model, device)
-    #model = load_model(args.runid, model, device, model_path_dir)
     
     model.train()
 
@@ -100,7 +97,7 @@ def train(args, config_parser):
         'smoothest_loss': {'variance': float('inf'), 'path': None, 'epoch': None},
         'most_recent': {'path': None, 'epoch': None}
     }
-    base_model_path = "mlruns/0/models/LIFFN_short_BN_4ch/"  # Base path for all checkpoints
+    base_model_path = "mlruns/0/models/<model_name>/"  # Base path for the trained model to save checkpoints (adjust based on model name and runid if needed)  
     
     """ # Anti-overfitting tracking
     consecutive_small_loss_decrease = 0

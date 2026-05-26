@@ -91,7 +91,7 @@ def test(args, config_parser):
     # model initialization and settings
     
     # FINAL MODELS: simplification of the LIF code
-    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
     #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
     #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
     #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
@@ -121,8 +121,8 @@ def test(args, config_parser):
     
     model = eval(config["model"]["name"])(config["model"]).to(device)
     
-    model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
-    #model = load_model(args.runid, model, device, model_path_dir) #                         MODEL PATH FROM MY TRAINING ---------------------------
+    #model = load_model(args.runid, model, device) #                 MODEL PATH AUTOMATIC (from runid) --------------------
+    model = load_model(args.runid, model, device, model_path_dir) #  MODEL PATH FROM MY TRAINING (still need the runid argument) ---------------------------
     model.eval()
 
     # validation metric
