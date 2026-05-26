@@ -47,7 +47,13 @@ def calibrate_model(calibration_loader, quant_model, device, args):
     return quant_model
 
 def test(args, config_parser):
-    mlflow.set_tracking_uri(args.path_mlflow)
+    # Set MLflow tracking URI (use local mlruns if not specified)
+    if args.path_mlflow:
+        tracking_uri = args.path_mlflow
+    else:
+        # Use absolute path to local mlruns directory
+        tracking_uri = f"file://{os.path.abspath('mlruns')}"
+    mlflow.set_tracking_uri(tracking_uri)
 
     run = mlflow.get_run(args.runid)
     config = config_parser.merge_configs(run.data.params)
@@ -103,7 +109,7 @@ def test(args, config_parser):
     # model initialization and settings
     
     # FINAL MODELS: simplification of the LIF code
-    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
     #model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
     #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
     #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
@@ -133,7 +139,7 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_GN/48/model.pth" # runid: 5be494fe70934ca4b5585df4d1384e53
     #model_path_dir = "mlruns/0/models/LIFFN_GN2/25/model.pth" # runid: d48a0fecb3744a878094155524f3cd91
     
-    model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
+    #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
     #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch/30/model.pth" # runid: 66c2e7eb3dd747b3a3ae529768871836
     #model_path_dir = "mlruns/0/models/LIFFN_BN_8ch/23/model.pth" # runid: 5beef02b4ac2463dae9c68dd90c03fb9
     #model_path_dir = "mlruns/0/models/LIFFN_BN_4ch/10/model.pth" # runid: 3c0f8ac17d254580a4f0246320bbb095

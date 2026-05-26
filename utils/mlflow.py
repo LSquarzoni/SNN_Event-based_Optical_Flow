@@ -19,9 +19,13 @@ def log_config(path_results, runid, config):
     with open(yaml_filename, "w") as outfile:
         yaml.dump(config, outfile, default_flow_style=False)
 
-    mlflow.start_run(runid)
-    mlflow.log_artifact(yaml_filename)
-    mlflow.end_run()
+    try:
+        mlflow.start_run(runid)
+        mlflow.log_artifact(yaml_filename)
+        mlflow.end_run()
+    except PermissionError:
+        # Skip logging artifact if there are permission issues (e.g., remote paths)
+        print(f"Warning: Could not log artifact to MLflow (permission denied). Config saved to {yaml_filename}")
 
     return eval_id
 
@@ -35,6 +39,10 @@ def log_results(runid, results, path, eval_id):
     with open(yaml_filename, "w") as outfile:
         yaml.dump(results, outfile, default_flow_style=False)
 
-    mlflow.start_run(runid)
-    mlflow.log_artifact(yaml_filename)
-    mlflow.end_run()
+    try:
+        mlflow.start_run(runid)
+        mlflow.log_artifact(yaml_filename)
+        mlflow.end_run()
+    except PermissionError:
+        # Skip logging artifact if there are permission issues (e.g., remote paths)
+        print(f"Warning: Could not log results to MLflow (permission denied). Metrics saved to {yaml_filename}")
