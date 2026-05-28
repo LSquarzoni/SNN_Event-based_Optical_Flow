@@ -102,7 +102,7 @@ pip install -r requirements.txt
 - **h5py 3.14**: HDF5 file handling for datasets
 - **onnx 1.18 + onnxruntime 1.22**: Model export and inference
 
-**Note**: Ensure you run all commands from the repository root directory with the conda environment activated.
+**Note**: ensure you run all commands from the repository root directory with the conda environment activated.
 
 ---
 
@@ -136,7 +136,7 @@ data:
 python train_flow.py --config configs/train_SNN.yml
 ```
 
-* When a training is launched, it is convenient to keep track of the run id produced, to find the correct model later on in its folder
+**Note**:When a training is launched, it is convenient to keep track of the run id produced, to find the correct model later on in its folder
 
 This will:
 - Train a `LIFFireNet` model (default in config) - change the model name to generate a different architecture
@@ -144,7 +144,7 @@ This will:
 - Log metrics via MLflow
 - Display training progress every epoch
 
-The checkpoint corresponding to the best training loss will be saved (remember that the training is self-supervised - no validation is used)
+**Note**: the checkpoint corresponding to the best training loss will be saved (remember that the training is self-supervised - no validation is used)
 
 **Optional arguments**:
 ```bash
@@ -472,9 +472,11 @@ exported_models/
 └── ...
 ```
 
-All model's variations are made available at the following link, both in fp32 and int8 precision: https://1drv.ms/f/c/18556617b05cc3e9/IgB-LUBz3bgUSK4EuvGQhhDKAaRqCuEudBftJENl3ihko8Y?e=y0g1UJ
+All model's variations' **ONNX files** are made available at the following link, both in fp32 and int8 precision: 
 
-* Inputs of these tests are taken from the real dataset, but parameters are randomly initialized, reason why the output is correct, based on the input provided and the weights and parameters used, but the inference quality won't match the error metrics observed for every model.
+https://1drv.ms/f/c/18556617b05cc3e9/IgB-LUBz3bgUSK4EuvGQhhDKAaRqCuEudBftJENl3ihko8Y?e=y0g1UJ
+
+**Note**: inputs of these tests are taken from the real dataset, but parameters are randomly initialized, reason why the output is correct, based on the input provided and the weights and parameters used, but the inference quality won't match the error metrics observed for every model.
 
 ### Testing Exported Models
 
