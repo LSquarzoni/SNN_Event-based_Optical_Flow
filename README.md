@@ -136,11 +136,15 @@ data:
 python train_flow.py --config configs/train_SNN.yml
 ```
 
+* When a training is launched, it is convenient to keep track of the run id produced, to find the correct model later on in its folder
+
 This will:
-- Train a `LIFFireNet` model (default in config)
+- Train a `LIFFireNet` model (default in config) - change the model name to generate a different architecture
 - Save checkpoints to `mlruns/`
 - Log metrics via MLflow
 - Display training progress every epoch
+
+The checkpoint corresponding to the best training loss will be saved (remember that the training is self-supervised - no validation is used)
 
 **Optional arguments**:
 ```bash
@@ -163,6 +167,19 @@ This will:
 - Compute error metrics (AEE, AAE, etc.)
 - Optionally visualize results if `vis.enabled: True` in config or store videos if `vis.store: True`
 - Apply average pooling on the input if `loader.resolution` < `loader.std_resolution` to match target resolution, then upscale the output to match the gt frame
+
+To evaluate a model with Post Training Quantization: (set both quantization.enabled and PTQ to True)
+
+```bash
+python eval_flow_quant.py --config configs/eval_MVSEC.yml --runid <mlflow_run_id> --auto-tune-lif --calibration_batches 1000
+```
+
+This will lauch first a calibration based on 1000 batches (which proved to be enough) and then a LIF membrane voltage analysis, which will return an estimate of the correct ranges of quantization for every layer: 
+
+unfortunatelly the calibration alone can't return good enough quantization ranges for the LIFs, reason why I introduced two parameters:
+LOWER_NEG_BOUND, to avoid the voltages from going too negative and waste quantization levels,
+LOWER_NEG_BOUND, to avoid voltages from not using negative enough values.
+For every model I provide some of these values returning the best results (inside the excel exploration file).
 
 ### 4. Export Model to ONNX
 
