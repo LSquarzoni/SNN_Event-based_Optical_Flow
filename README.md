@@ -472,6 +472,10 @@ exported_models/
 └── ...
 ```
 
+All model's variations are made available at the following link, both in fp32 and int8 precision: https://1drv.ms/f/c/18556617b05cc3e9/IgB-LUBz3bgUSK4EuvGQhhDKAaRqCuEudBftJENl3ihko8Y?e=y0g1UJ
+
+* Inputs of these tests are taken from the real dataset, but parameters are randomly initialized, reason why the output is correct, based on the input provided and the weights and parameters used, but the inference quality won't match the error metrics observed for every model.
+
 ### Testing Exported Models
 
 You can verify the exported ONNX model using:
