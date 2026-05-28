@@ -181,6 +181,10 @@ LOWER_NEG_BOUND, to avoid the voltages from going too negative and waste quantiz
 LOWER_NEG_BOUND, to avoid voltages from not using negative enough values.
 For every model I provide some of these values returning the best results (inside the excel exploration file).
 
+**Note**: an attempt has been made by introducing Batch Normalization on the internal voltage memories, which generally lead to best performance and more stable trainings; the effect is mostly in the improved neurons utilization among all different LIF layers, as well as a smaller range of functioning for the voltage values, which might improve the quality of the quantization. 
+
+To enable normalization, simply enable the `model.normalization` parameter, either during training or evaluation. Some normalized models re-trained are present in the models' folder. To make normalization seamless during inference, it would be possible to fold the operation inside the convolutions, but this aspect has to be better analyzed if an implementation is desired.
+
 ### 4. Export Model to ONNX
 
 ```bash
@@ -607,7 +611,7 @@ This implementation is based on the work by Hagenaars, Paredes-Vallés, and de C
 
 This project maintains consistency with the original work in terms of:
 - Training specifications and hyperparameters
-- Dataset usage (MVSEC)
+- Dataset usage (MVSEC and UZH FPV)
 - Network architectures (FireNet-based)
 
 Extensions include quantization support (QAT/PTQ), ONNX export capabilities, and additional model variants.
