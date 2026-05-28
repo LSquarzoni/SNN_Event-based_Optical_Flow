@@ -100,15 +100,6 @@ def test(args, config_parser):
     #model_path_dir = "mlruns/0/models/LIFFN_8ch_short/23/model.pth" # runid: b61534e5119a4704a66638c1ba78f308
     #model_path_dir = "mlruns/0/models/LIFFN_4ch_short/5/model.pth" # runid: 4ea97793680843e99fd7aaffc2a717ef
     
-    #model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
-    #model_path_dir = "mlruns/0/models/LIFFFN_16ch/23/model.pth" # runid: 5263c20879994d469904e950f8835953
-    #model_path_dir = "mlruns/0/models/LIFFFN_8ch/15/model.pth" # runid: 4899a1984ba74c91a44925426aa7c397
-    #model_path_dir = "mlruns/0/models/LIFFFN_4ch/5/model.pth" # runid: 24a9b249620b48318d4b12dc4ce7b7a2
-    #model_path_dir = "mlruns/0/models/LIFFFN_short/31/model.pth" # runid: 5d9d714fafa144a888f770199de6ac46
-    #model_path_dir = "mlruns/0/models/LIFFFN_16ch_short/24/model.pth" # runid: 9b45bea0c1cd481a94a046e71793ef32
-    #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short/11/model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
-    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short/9/model.pth" # runid: 4ba018c376724267aee4bc66cd18d35c
-    
     # NORMALIZED MODELS:
     #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
     #model_path_dir = "mlruns/0/models/LIFFN_BN_16ch/30/model.pth" # runid: 66c2e7eb3dd747b3a3ae529768871836

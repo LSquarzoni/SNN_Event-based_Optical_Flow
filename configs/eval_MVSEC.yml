@@ -1,6 +1,6 @@
 data:
     path: ./datasets/MVSEC_h5/ # path for the dataset in my local machine
-    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/ # path to dataset in the server
+    #path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/ # path to dataset from the sassauna server
     mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
     window: 1 # 1 for dt1, 0.25 for dt4
     window_eval: 15000 # not used
@@ -34,7 +34,6 @@ vis:
     activity: False
     store: False
     store_interval: 0.0  # store every x seconds, 0.0 to disable
-    #type: vectors # gradients or vectors
     store_type: video # video or image
 
 hot_filter:
