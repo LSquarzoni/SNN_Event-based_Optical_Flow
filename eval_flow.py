@@ -131,11 +131,13 @@ def test(args, config_parser):
         for metric in config["metrics"]["name"]:
             criteria.append(eval(metric)(config, device, flow_scaling=config["metrics"]["flow_scaling"]))
     
-    # Update metrics resolution and flow_scaling if keeping GT at full resolution
-    keep_gt_full_res = config["loader"].get("keep_gt_full_res", False)
-    if keep_gt_full_res and criteria:
-        std_resolution = config["loader"].get("std_resolution", config["loader"]["resolution"])
-        model_resolution = config["loader"]["resolution"]
+    # When resolution differs from std_resolution, metrics are evaluated at full resolution
+    # Adjust metrics resolution and flow_scaling proportionally
+    std_resolution = config["loader"].get("std_resolution", config["loader"]["resolution"])
+    model_resolution = config["loader"]["resolution"]
+    resolution_differs = (std_resolution[0] != model_resolution[0] or std_resolution[1] != model_resolution[1])
+    
+    if resolution_differs and criteria:
         base_flow_scaling = config["metrics"]["flow_scaling"]
         
         # Adjust flow_scaling proportionally to inference resolution
@@ -194,9 +196,9 @@ def test(args, config_parser):
                         round_idx=True,
                     )
                     
-                    # Upsample predictions if GT is at full resolution and model at lower resolution
-                    keep_gt_full_res = config["loader"].get("keep_gt_full_res", False)
-                    if keep_gt_full_res and "gtflow" in inputs:
+                    # Upsample predictions if resolution differs from std_resolution
+                    # When evaluating at lower resolution, always upsample output to match GT resolution
+                    if "gtflow" in inputs:
                         gt_flow_h, gt_flow_w = inputs["gtflow"].shape[2], inputs["gtflow"].shape[3]
                         pred_flow_h, pred_flow_w = x["flow"][-1].shape[2], x["flow"][-1].shape[3]
                         

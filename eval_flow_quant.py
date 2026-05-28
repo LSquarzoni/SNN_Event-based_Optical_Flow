@@ -28,8 +28,8 @@ from utils.visualization import Visualization
 
 # Quantization negative bounds for membrane potentials - these are used to clip extreme negative values that would otherwise waste quantization levels and cause numerical instability. 
 # These values are based on the profiling of membrane potential distributions and are chosen to balance coverage of typical values with exclusion of extreme outliers.
-LOWER_NEG_BOUND = -300 # Avoid the voltages to go too negative
-UPPER_NEG_BOUND = -15 # Avoid the voltages not to use negative enough values
+LOWER_NEG_BOUND = -300 # Avoid the voltages from going too negative
+UPPER_NEG_BOUND = -15 # Avoid the voltages from not using negative enough values
 
 # I tried to authomatically determine these bounds based on the profiling results, but without these two
 # bounds the quantization quality drastically decreases
@@ -1356,6 +1356,23 @@ def test_quantized(args, config_parser):
     if "metrics" in config.keys():
         for metric in config["metrics"]["name"]:
             criteria.append(eval(metric)(config, device, flow_scaling=config["metrics"]["flow_scaling"]))
+    
+    # When resolution differs from std_resolution, metrics are evaluated at full resolution
+    # Adjust metrics resolution and flow_scaling proportionally
+    std_resolution = config["loader"].get("std_resolution", config["loader"]["resolution"])
+    model_resolution = config["loader"]["resolution"]
+    resolution_differs = (std_resolution[0] != model_resolution[0] or std_resolution[1] != model_resolution[1])
+    
+    if resolution_differs and criteria:
+        base_flow_scaling = config["metrics"]["flow_scaling"]
+        
+        # Adjust flow_scaling proportionally to inference resolution
+        training_resolution = 128  # Models trained at 128×128
+        adjusted_flow_scaling = base_flow_scaling * (model_resolution[0] / training_resolution) / 2
+        
+        for criterion in criteria:
+            criterion.res = std_resolution
+            criterion.flow_scaling = adjusted_flow_scaling
 
     # inference loop
     idx_AEE = 0
@@ -1381,6 +1398,22 @@ def test_quantized(args, config_parser):
                     x = model(
                         inputs["event_voxel"].to(device), inputs["event_cnt"].to(device)
                     )
+                    
+                    # Upsample predictions if resolution differs from std_resolution
+                    # When evaluating at lower resolution, always upsample output to match GT resolution
+                    if "gtflow" in inputs:
+                        from utils.iwe import upsample_flow
+                        gt_flow_h, gt_flow_w = inputs["gtflow"].shape[2], inputs["gtflow"].shape[3]
+                        pred_flow_h, pred_flow_w = x["flow"][-1].shape[2], x["flow"][-1].shape[3]
+                        
+                        # If GT is at higher resolution, upsample predictions to match
+                        if gt_flow_h > pred_flow_h or gt_flow_w > pred_flow_w:
+                            x["flow"][-1] = upsample_flow(x["flow"][-1], gt_flow_h, gt_flow_w)
+                            # Also scale flow values: if spatial dimensions increased by 2x, flow should also increase by 2x
+                            scale_factor_h = gt_flow_h / pred_flow_h
+                            scale_factor_w = gt_flow_w / pred_flow_w
+                            x["flow"][-1][:, 0, :, :] *= scale_factor_h  # Scale y component
+                            x["flow"][-1][:, 1, :, :] *= scale_factor_w  # Scale x component
                     
                     if "metrics" in config.keys():
                         # event flow association
