@@ -34,17 +34,17 @@ This repository implements Spiking Neural Networks (SNNs) for event-based optica
  ┃
  ┣ 📂models/               Neural network architectures
  ┃ ┣ 📜model.py            Main model definitions (FireNet, LIFFireNet, etc.)
- ┃ ┣ 📜spiking_submodules.py    Custom LIF layers
+ ┃ ┣ 📜spiking_submodules.py    Custom LIF layers (old layers)
  ┃ ┣ 📜SNNtorch_spiking_submodules.py  SNNtorch-based implementations
  ┃ ┣ 📜submodules.py       Standard ANN building blocks
  ┃ ┗ 📜unet.py             U-Net based architectures
  ┃
  ┣ 📂loss/                 Loss functions and error metrics
- ┃ ┗ 📜flow.py             Event warping loss, AEE, AAE calculations
+ ┃ ┗ 📜flow.py             Event warping loss, AEE, AAE and other error metric calculations
  ┃
  ┣ 📂utils/                Utility functions
  ┃ ┣ 📜utils.py            Model saving/loading, helper functions
- ┃ ┣ 📜visualization.py    Visualization tools for flow and events
+ ┃ ┣ 📜visualization.py    Visualization and video storing tools for flow and events
  ┃ ┣ 📜iwe.py              Image of Warped Events (IWE) computation
  ┃ ┣ 📜mlflow.py           MLflow logging utilities
  ┃ ┗ 📜gradients.py        Gradient analysis tools
@@ -57,15 +57,10 @@ This repository implements Spiking Neural Networks (SNNs) for event-based optica
  ┃
  ┣ 📜train_flow.py         ⭐ Main training script
  ┣ 📜eval_flow.py          ⭐ Main evaluation script
- ┃
- ┣ 📜train_flow_quant.py   Training with quantization-aware training (QAT)
- ┣ 📜train_flow_validation.py  Training with validation split
- ┣ 📜eval_flow_quant.py    Evaluation for quantized models
+ ┣ 📜eval_flow_quant.py    Evaluation for quantized models (better used for PTQ evaluation)
  ┃
  ┣ 📜Model_export.py       Model export to ONNX format
- ┣ 📜Model_export_RealQuant.py  INT8 quantized ONNX export (DeepQuant)
- ┣ 📜LIF_layer_export.py   LIF layer export utilities
- ┣ 📜ConvLIF_layer_export.py  Convolutional LIF export
+ ┣ 📜Model_export_RealQuant.py  INT8 quantized ONNX export (for DeepQuant usage)
  ┃
  ┗ 📜requirements.txt      Python dependencies
 ```
