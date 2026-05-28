@@ -161,15 +161,8 @@ This will:
 - Load the model from the specified run
 - Evaluate on the test set
 - Compute error metrics (AEE, AAE, etc.)
-- Optionally visualize results if `vis.enabled: True` in config
-- Apply average pooling if `loader.resolution` < `loader.std_resolution` to match target resolution
-
-**Enable visualization**:
-```bash
-python eval_flow.py --config configs/eval_MVSEC_visual.yml --runid <mlflow_run_id>
-```
-
-**Note**: The MVSEC dataset has a native resolution of 256×256. If you evaluate at 128×128, average pooling will automatically downsample the inputs.
+- Optionally visualize results if `vis.enabled: True` in config or store videos if `vis.store: True`
+- Apply average pooling on the input if `loader.resolution` < `loader.std_resolution` to match target resolution, then upscale the output to match the gt frame
 
 ### 4. Export Model to ONNX
 
@@ -190,8 +183,6 @@ These are the primary scripts for the standard workflow:
 | Script | Purpose | Use Case |
 |--------|---------|----------|
 | **`train_flow.py`** ⭐ | Standard training | **Primary training script** - Start here |
-| `train_flow_quant.py` | Quantization-Aware Training (QAT) | Training models for hardware deployment with quantization |
-| `train_flow_validation.py` | Training with validation split | Training with separate validation set monitoring |
 
 ### Evaluation
 
@@ -206,8 +197,6 @@ These are the primary scripts for the standard workflow:
 |--------|---------|----------|
 | `Model_export.py` | Full model ONNX export | Export complete model for deployment |
 | `Model_export_RealQuant.py` | INT8 quantized ONNX export | Export with real INT8 quantization using DeepQuant |
-| `LIF_layer_export.py` | LIF layer export utility | Export individual LIF layers |
-| `ConvLIF_layer_export.py` | ConvLIF layer export utility | Export convolutional LIF blocks |
 
 ---
 
@@ -233,7 +222,7 @@ To select a model, modify the `model.name` field in your config file:
 ```yaml
 model:
     name: LIFFireNet  # Change this to any model from the table above
-    encoding: cnt     # Event encoding: 'voxel' or 'cnt' (count)
+    encoding: cnt     # Event encoding: 'voxel' or 'cnt' (count) - we always used cnt encoding
     num_bins: 2       # Number of temporal bins for encoding
     base_num_channels: 32
     kernel_size: 3
@@ -262,7 +251,6 @@ All training and evaluation parameters are controlled via YAML config files in [
 
 - **`train_SNN.yml`**: Training configuration (architecture, hyperparameters, dataset)
 - **`eval_MVSEC.yml`**: Evaluation configuration (metrics only)
-- **`eval_MVSEC_visual.yml`**: Evaluation with visualization enabled
 
 ### Key Configuration Sections
 
@@ -271,9 +259,9 @@ All training and evaluation parameters are controlled via YAML config files in [
 ```yaml
 data:
     path: /path/to/dataset/
-    mode: events          # 'events' or 'frames'
+    mode: events          # 'events' or 'frames' - events means that one input frame is generated every x events
     window: 1000          # Event window size (number of events)
-    window_loss: 10000    # Window size for loss computation
+    window_loss: 10000    # Window size for loss computation - for BPTT usage
 ```
 
 #### 2. Model Configuration
@@ -297,15 +285,12 @@ model:
 
 ```yaml
 optimizer:
-    name: SGD
-    lr: 0.0001
-    momentum: 0.9
-    weight_decay: 0.0001
-    nesterov: True
+    name: Adam
+    lr: 0.0002
 
 loader:
-    n_epochs: 50
-    batch_size: 4
+    n_epochs: 100
+    batch_size: 8
     resolution: [128, 128]  # [height, width] - Target processing resolution
     std_resolution: [128, 128]  # [height, width] - Original dataset resolution
     augment: ["Horizontal", "Vertical", "Polarity"]
@@ -327,14 +312,14 @@ loss:
     clip_grad: 1.0            # Gradient clipping (null to disable)
 ```
 
-#### 4. Visualization
+#### 4. Visualization and Storing
 
 ```yaml
 vis:
     enabled: False       # Enable during evaluation for visual output
     verbose: True        # Print detailed progress
-    px: 400             # Visualization resolution
     store_grads: False  # Save gradient statistics
+    store: False         # Enable to save videos of the inference during evaluation
 ```
 
 ### Hot Pixel Filtering
@@ -435,12 +420,6 @@ Once the custom operator is installed:
 ```bash
 # Export standard model
 python Model_export.py --runid <mlflow_run_id>
-
-# Export individual LIF layer (for testing)
-python LIF_layer_export.py
-
-# Export ConvLIF layer (for testing)
-python ConvLIF_layer_export.py
 ```
 
 **Note**: The export scripts automatically use the custom ONNX operator instead of the regular SNNtorch modules during export.
@@ -569,8 +548,7 @@ The evaluation scripts compute several optical flow error metrics:
 The repository contains multiple script variants for different use cases:
 
 - **Standard workflow**: `train_flow.py` + `eval_flow.py`
-- **Quantization workflow**: `train_flow_quant.py` + `eval_flow_quant.py`
-- **Experimental**: `train_flow_validation.py` (validation split variant)
+- **Quantization workflow**: `train_flow.py` + `eval_flow_quant.py`
 
 All scripts are kept for backward compatibility and different research needs. **For most users, the standard workflow is recommended.**
 
