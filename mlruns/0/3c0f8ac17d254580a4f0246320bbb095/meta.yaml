@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/3c0f8ac17d254580a4f0246320bbb095/artifacts
+end_time: 1777899582366
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 3c0f8ac17d254580a4f0246320bbb095
+run_name: whimsical-penguin-10
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777884930057
+status: 3
+tags: []
+user_id: msc25h1

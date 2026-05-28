@@ -1,0 +1,164 @@
+diff --git a/configs/eval_MVSEC.yml b/configs/eval_MVSEC.yml
+index f2cbc69..47d056a 100644
+--- a/configs/eval_MVSEC.yml
++++ b/configs/eval_MVSEC.yml
+@@ -12,24 +12,24 @@ model:
+         PTQ: False # Post Training Quantization enabled or not
+ 
+ # To generate non-trained models -----------------------------------------------------------
+-    #name: LIFFireNet # for other models available, see models/model.py
+-    #name: LIFFireNet_short # shorter model with 6 layers instead of 8
+-    name: LIFFireFlowNet # no recurrent model
+-    #name: LIFFireFlowNet_short # no recurrent model with only 6 layers
+-    encoding: cnt # voxel/cnt
+-    round_encoding: False # for voxel encoding
+-    norm_input: False # normalize input
+-    num_bins: 2
+-    base_num_channels: 32
+-    kernel_size: 3
+-    activations: [arctanspike, arctanspike] # activations for ff and rec neurons
++    # name: LIFFireNet # for other models available, see models/model.py
++    # #name: LIFFireNet_short # shorter model with 6 layers instead of 8
++    # #name: LIFFireFlowNet # no recurrent model
++    # #name: LIFFireFlowNet_short # no recurrent model with only 6 layers
++    # encoding: cnt # voxel/cnt
++    # round_encoding: False # for voxel encoding
++    # norm_input: False # normalize input
++    # num_bins: 2
++    # base_num_channels: 32
++    # kernel_size: 3
++    # activations: [arctanspike, arctanspike] # activations for ff and rec neurons
+ 
+-    spiking_neuron:
+-        leak: [0.0, 1.0]
+-        thresh: [0.0, 0.8]
+-        learn_leak: True
+-        learn_thresh: True
+-        hard_reset: True
++    # spiking_neuron:
++    #     leak: [0.0, 1.0]
++    #     thresh: [0.0, 0.8]
++    #     learn_leak: True
++    #     learn_thresh: True
++    #     hard_reset: True
+ # ----------------------------------------------------------------------------------------
+ 
+ metrics:
+diff --git a/configs/train_SNN.yml b/configs/train_SNN.yml
+index 45617b2..9d13484 100644
+--- a/configs/train_SNN.yml
++++ b/configs/train_SNN.yml
+@@ -16,7 +16,7 @@ model:
+     round_encoding: False # for voxel encoding
+     norm_input: False # normalize input
+     num_bins: 2
+-    base_num_channels: 16
++    base_num_channels: 4
+     kernel_size: 3
+     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
+     mask_output: True
+@@ -47,7 +47,7 @@ loader:
+     std_resolution: [128, 128]
+     augment: ["Horizontal", "Vertical", "Polarity"]
+     augment_prob: [0.5, 0.5, 0.5]
+-    gpu: 3
++    gpu: 1
+ 
+ vis:
+     verbose: True
+diff --git a/models/SNNtorch_spiking_submodules.py b/models/SNNtorch_spiking_submodules.py
+index 79f08cf..e4a542b 100644
+--- a/models/SNNtorch_spiking_submodules.py
++++ b/models/SNNtorch_spiking_submodules.py
+@@ -333,7 +333,7 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
+ 
+         return spk_out, new_state
+ 
+-class LIFBlockFunction(torch.autograd.Function):
++""" class LIFBlockFunction(torch.autograd.Function):
+     @staticmethod
+     def forward(ctx, input_current, prev_mem, beta, threshold, hard_reset):
+         if prev_mem is None:
+@@ -373,4 +373,4 @@ class LIF_forONNX(nn.Module):
+ 
+     def detach_hidden(self):
+         # No hidden state to detach, so just pass
+-        pass
+\ No newline at end of file
++        pass """
+\ No newline at end of file
+diff --git a/models/model.py b/models/model.py
+index bcdf6e4..e237301 100644
+--- a/models/model.py
++++ b/models/model.py
+@@ -640,9 +640,9 @@ class LIFFireFlowNet(FireNet):
+     Spiking FireFlowNet architecture to investigate the power of implicit recurrency in SNNs.
+     """
+ 
+-    head_neuron = SNNtorch_ConvReLU
+-    ff_neuron = SNNtorch_ConvReLU
+-    rec_neuron = SNNtorch_ConvReLU
++    head_neuron = SNNtorch_ConvLIF
++    ff_neuron = SNNtorch_ConvLIF
++    rec_neuron = SNNtorch_ConvLIF
+     residual = False
+     w_scale_pred = 0.01
+     
+diff --git a/quant_model_export.py b/quant_model_export.py
+index e20f1f7..f3f3b4b 100644
+--- a/quant_model_export.py
++++ b/quant_model_export.py
+@@ -12,7 +12,7 @@ cf.IGNORE_MISSING_KEYS = True
+ 
+ from configs.parser import YAMLParser
+ from dataloader.h5 import H5Loader
+-from models.model import LIFFireNet, LIFFireFlowNet
++from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short
+ from utils.utils import load_model
+ 
+ def calibrate_model(calibration_loader, quant_model, device, num_batches=50):
+@@ -65,7 +65,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
+ 
+     # Only load weights if not dummy
+     if args.runid != "dummy":
+-        model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
++        model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
+         model = load_model(args.runid, model, device, model_path_dir)
+         pass
+ 
+@@ -115,8 +115,8 @@ def export_to_onnx(args, config_parser, export_quantized=False):
+             np.savez('exported_models/outputs.npz', flow=flow)
+ 
+             # Export paths
+-            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_TEST.onnx"
+-            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler_TEST.onnx"
++            onnx_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}.onnx"
++            onnx_simpler_file_path = f"exported_models/{config['model']['name']}_SNNtorch{model_suffix}_simpler.onnx"
+ 
+             print(f"Exporting model to: {onnx_file_path}")
+             print(f"Input shape - event_cnt: {event_cnt.shape}")
+@@ -147,6 +147,11 @@ def export_to_onnx(args, config_parser, export_quantized=False):
+                     do_constant_folding=True,
+                     input_names=['event_voxel', 'event_cnt'],
+                     output_names=['flow'],
++                    dynamic_axes={
++                        'event_voxel': {0: 'batch_size'},
++                        'event_cnt': {0: 'batch_size'},
++                        'flow': {0: 'batch_size'}
++                    }
+                 )
+ 
+             # Verify the exported model
+diff --git a/train_flow.py b/train_flow.py
+index ce7f42f..d005f59 100644
+--- a/train_flow.py
++++ b/train_flow.py
+@@ -229,7 +229,7 @@ def train(args, config_parser):
+ 
+                     # Save model if combined metric improves
+                     if current_metric < best_metric - 1e-6:
+-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_16ch_short/")
++                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_4ch_short/")
+                         os.makedirs(model_save_path, exist_ok=True)
+ 
+                         save_data = {

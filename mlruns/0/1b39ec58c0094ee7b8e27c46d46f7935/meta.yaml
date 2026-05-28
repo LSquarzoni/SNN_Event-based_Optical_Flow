@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/1b39ec58c0094ee7b8e27c46d46f7935/artifacts
+end_time: 1777969603547
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 1b39ec58c0094ee7b8e27c46d46f7935
+run_name: placid-sow-798
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777895782705
+status: 3
+tags: []
+user_id: msc25h1

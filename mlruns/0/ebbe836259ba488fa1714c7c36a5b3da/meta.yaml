@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/ebbe836259ba488fa1714c7c36a5b3da/artifacts
+end_time: 1778503506690
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: ebbe836259ba488fa1714c7c36a5b3da
+run_name: spiffy-croc-568
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1775558490448
+status: 3
+tags: []
+user_id: msc25h1

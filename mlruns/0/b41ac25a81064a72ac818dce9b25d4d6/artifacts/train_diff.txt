@@ -1,0 +1,97 @@
+diff --git a/configs/train_SNN.yml b/configs/train_SNN.yml
+index 424ddc3..37afe5b 100644
+--- a/configs/train_SNN.yml
++++ b/configs/train_SNN.yml
+@@ -15,7 +15,7 @@ model:
+     round_encoding: False # for voxel encoding
+     norm_input: False # normalize input
+     num_bins: 2
+-    base_num_channels: 32
++    base_num_channels: 8
+     kernel_size: 3
+     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
+     mask_output: True
+@@ -46,7 +46,7 @@ loader:
+     std_resolution: [128, 128]
+     augment: ["Horizontal", "Vertical", "Polarity"]
+     augment_prob: [0.5, 0.5, 0.5]
+-    gpu: 3
++    gpu: 2
+ 
+ vis:
+     verbose: True
+diff --git a/eval_flow.py b/eval_flow.py
+index 96af656..dc91729 100644
+--- a/eval_flow.py
++++ b/eval_flow.py
+@@ -141,9 +141,10 @@ def test(args, config_parser):
+     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
+     
+     # FINAL MODELS: simplification of the LIF code
+-    model_path_dir = "mlruns/0/models/LIFFN//model.pth" # runid: 151279f26b33483d8028f59dcea59603
+-    #model_path_dir = "mlruns/0/models/LIFFN_16ch//model.pth" # runid: 
+-    #model_path_dir = "mlruns/0/models/LIFFN_8ch//model.pth" # runid: 
++    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
++    #model_path_dir = "mlruns/0/models/LIFFN_16ch//model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
++    #model_path_dir = "mlruns/0/models/LIFFN_8ch//model.pth" # runid: 8ffc42a589b34161956e9bfb32389c37
++    #model_path_dir = "mlruns/0/models/LIFFN_4ch//model.pth" # runid:
+     
+     model = eval(config["model"]["name"])(config["model"]).to(device)
+     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+@@ -443,7 +444,7 @@ if __name__ == "__main__":
+     parser.add_argument("runid", help="mlflow run")
+     parser.add_argument(
+         "--config",
+-        default="configs/eval_flow.yml",
++        default="configs/eval_MVSEC.yml",
+         help="config file, overwrites mlflow settings",
+     )
+     parser.add_argument(
+diff --git a/model_print.py b/model_print.py
+index f6bee7b..ec0f7b8 100644
+--- a/model_print.py
++++ b/model_print.py
+@@ -78,7 +78,7 @@ if __name__ == "__main__":
+     parser.add_argument("runid", help="mlflow run")
+     parser.add_argument(
+         "--config",
+-        default="configs/eval_flow.yml",
++        default="configs/eval_MVSEC.yml",
+         help="config file, overwrites mlflow settings",
+     )
+     parser.add_argument(
+diff --git a/quant_model_export.py b/quant_model_export.py
+index bb145ad..8d6b522 100644
+--- a/quant_model_export.py
++++ b/quant_model_export.py
+@@ -60,7 +60,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
+     model = eval(config["model"]["name"])(config["model"]).to(device)
+     
+     # Load model weights
+-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: 9e417b9cd41d436c9a047c39d9cf2e30
++    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+     model = load_model(args.runid, model, device, model_path_dir)
+     model.eval()
+     
+diff --git a/train_flow.py b/train_flow.py
+index d193a4f..f36c34a 100644
+--- a/train_flow.py
++++ b/train_flow.py
+@@ -227,7 +227,7 @@ def train(args, config_parser):
+ 
+                     # Save model if combined metric improves
+                     if current_metric < best_metric - 1e-6:
+-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN/")
++                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_8ch/")
+                         os.makedirs(model_save_path, exist_ok=True)
+ 
+                         save_data = {
+@@ -339,7 +339,7 @@ if __name__ == "__main__":
+     parser = argparse.ArgumentParser()
+     parser.add_argument(
+         "--config",
+-        default="configs/train_flow.yml",
++        default="configs/train_SNN.yml",
+         help="training configuration",
+     )
+     parser.add_argument(

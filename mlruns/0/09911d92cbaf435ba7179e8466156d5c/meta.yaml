@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/09911d92cbaf435ba7179e8466156d5c/artifacts
+end_time: 1778070936137
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 09911d92cbaf435ba7179e8466156d5c
+run_name: learned-cat-769
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1778056824425
+status: 3
+tags: []
+user_id: msc25h1

@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/5beef02b4ac2463dae9c68dd90c03fb9/artifacts
+end_time: 1778662672369
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 5beef02b4ac2463dae9c68dd90c03fb9
+run_name: redolent-mouse-31
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777450241884
+status: 3
+tags: []
+user_id: msc25h1

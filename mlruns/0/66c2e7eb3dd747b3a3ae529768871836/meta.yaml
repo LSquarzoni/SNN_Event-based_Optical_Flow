@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/66c2e7eb3dd747b3a3ae529768871836/artifacts
+end_time: 1778660763224
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 66c2e7eb3dd747b3a3ae529768871836
+run_name: puzzled-robin-166
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777367338025
+status: 3
+tags: []
+user_id: msc25h1

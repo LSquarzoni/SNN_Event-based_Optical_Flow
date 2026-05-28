@@ -1,0 +1,83 @@
+diff --git a/configs/train_SNN.yml b/configs/train_SNN.yml
+index 424ddc3..e9b3bcf 100644
+--- a/configs/train_SNN.yml
++++ b/configs/train_SNN.yml
+@@ -15,7 +15,7 @@ model:
+     round_encoding: False # for voxel encoding
+     norm_input: False # normalize input
+     num_bins: 2
+-    base_num_channels: 32
++    base_num_channels: 16
+     kernel_size: 3
+     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
+     mask_output: True
+diff --git a/eval_flow.py b/eval_flow.py
+index 96af656..50d2eb2 100644
+--- a/eval_flow.py
++++ b/eval_flow.py
+@@ -141,7 +141,7 @@ def test(args, config_parser):
+     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
+     
+     # FINAL MODELS: simplification of the LIF code
+-    model_path_dir = "mlruns/0/models/LIFFN//model.pth" # runid: 151279f26b33483d8028f59dcea59603
++    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+     #model_path_dir = "mlruns/0/models/LIFFN_16ch//model.pth" # runid: 
+     #model_path_dir = "mlruns/0/models/LIFFN_8ch//model.pth" # runid: 
+     
+@@ -443,7 +443,7 @@ if __name__ == "__main__":
+     parser.add_argument("runid", help="mlflow run")
+     parser.add_argument(
+         "--config",
+-        default="configs/eval_flow.yml",
++        default="configs/eval_MVSEC.yml",
+         help="config file, overwrites mlflow settings",
+     )
+     parser.add_argument(
+diff --git a/model_print.py b/model_print.py
+index f6bee7b..ec0f7b8 100644
+--- a/model_print.py
++++ b/model_print.py
+@@ -78,7 +78,7 @@ if __name__ == "__main__":
+     parser.add_argument("runid", help="mlflow run")
+     parser.add_argument(
+         "--config",
+-        default="configs/eval_flow.yml",
++        default="configs/eval_MVSEC.yml",
+         help="config file, overwrites mlflow settings",
+     )
+     parser.add_argument(
+diff --git a/quant_model_export.py b/quant_model_export.py
+index bb145ad..8d6b522 100644
+--- a/quant_model_export.py
++++ b/quant_model_export.py
+@@ -60,7 +60,7 @@ def export_to_onnx(args, config_parser, export_quantized=False):
+     model = eval(config["model"]["name"])(config["model"]).to(device)
+     
+     # Load model weights
+-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: 9e417b9cd41d436c9a047c39d9cf2e30
++    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+     model = load_model(args.runid, model, device, model_path_dir)
+     model.eval()
+     
+diff --git a/train_flow.py b/train_flow.py
+index d193a4f..621a9d3 100644
+--- a/train_flow.py
++++ b/train_flow.py
+@@ -227,7 +227,7 @@ def train(args, config_parser):
+ 
+                     # Save model if combined metric improves
+                     if current_metric < best_metric - 1e-6:
+-                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN/")
++                        model_save_path = get_next_model_folder("mlruns/0/models/LIFFN_16ch/")
+                         os.makedirs(model_save_path, exist_ok=True)
+ 
+                         save_data = {
+@@ -339,7 +339,7 @@ if __name__ == "__main__":
+     parser = argparse.ArgumentParser()
+     parser.add_argument(
+         "--config",
+-        default="configs/train_flow.yml",
++        default="configs/train_SNN.yml",
+         help="training configuration",
+     )
+     parser.add_argument(

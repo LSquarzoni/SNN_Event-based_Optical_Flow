@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/e1965c33f8214d139624d7e08c7ec9c1/artifacts
+end_time: 1779794436648
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: e1965c33f8214d139624d7e08c7ec9c1
+run_name: baseline
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1757411498480
+status: 3
+tags: []
+user_id: msc25h1

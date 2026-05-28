@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/bb4ece23356043fca1204176cb270c7d/artifacts
+end_time: 1778751184766
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: bb4ece23356043fca1204176cb270c7d
+run_name: bold-snipe-76
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1757578016355
+status: 3
+tags: []
+user_id: msc25h1

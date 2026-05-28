@@ -1,0 +1,146 @@
+diff --git a/configs/eval_MVSEC.yml b/configs/eval_MVSEC.yml
+index 980ed7c..41c3a1f 100644
+--- a/configs/eval_MVSEC.yml
++++ b/configs/eval_MVSEC.yml
+@@ -1,7 +1,7 @@
+ data:
+     path: /usr/scratch/badile13/amarchei/MVSEC_evflow/h5/
+-    mode: gtflow_dt1 # gtflow_dt1/gtflow_dt4
+-    window: 1 # 1 for dt1, 0.25 for dt4
++    mode: gtflow_dt4 # gtflow_dt1/gtflow_dt4
++    window: 0.25 # 1 for dt1, 0.25 for dt4
+     window_eval: 15000 # not used
+ 
+ model:
+diff --git a/configs/train_SNN.yml b/configs/train_SNN.yml
+index 4e66dd5..e6226df 100644
+--- a/configs/train_SNN.yml
++++ b/configs/train_SNN.yml
+@@ -47,7 +47,7 @@ loader:
+     std_resolution: [128, 128]
+     augment: ["Horizontal", "Vertical", "Polarity"]
+     augment_prob: [0.5, 0.5, 0.5]
+-    gpu: 3
++    gpu: 1
+ 
+ vis:
+     verbose: True
+diff --git a/eval_flow.py b/eval_flow.py
+index e66b6fd..8bcd5bf 100644
+--- a/eval_flow.py
++++ b/eval_flow.py
+@@ -141,19 +141,23 @@ def test(args, config_parser):
+     #model_path_dir = "mlruns/0/models/LIFFireNet_SNNtorch_val10%/5/model.pth" # runid: c920be7d90b84b71aa752bdee1828636
+     
+     # FINAL MODELS: simplification of the LIF code
+-    model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
+-    #model_path_dir = "mlruns/0/models/LIFFN_16ch//model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
+-    #model_path_dir = "mlruns/0/models/LIFFN_8ch//model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
+-    #model_path_dir = "mlruns/0/models/LIFFN_4ch//model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
++    #model_path_dir = "mlruns/0/models/LIFFN/38/model.pth" # runid: e1965c33f8214d139624d7e08c7ec9c1
++    model_path_dir = "mlruns/0/models/LIFFN_16ch/38/model.pth" # runid: b6764e1aa848462c89dc70ea9d99246e
++    #model_path_dir = "mlruns/0/models/LIFFN_8ch/12/model.pth" # runid: b41ac25a81064a72ac818dce9b25d4d6
++    #model_path_dir = "mlruns/0/models/LIFFN_4ch/12/model.pth" # runid: d27de9a1834748f8857b891ab6eba05e
+     #model_path_dir = "mlruns/0/models/LIFFN_short//model.pth" # runid:
+     #model_path_dir = "mlruns/0/models/LIFFN_16ch_short//model.pth" # runid: 
+     #model_path_dir = "mlruns/0/models/LIFFN_8ch_short//model.pth" # runid: 
+     #model_path_dir = "mlruns/0/models/LIFFN_4ch_short//model.pth" # runid: 
+     
+-    #model_path_dir = "mlruns/0/models/LIFFFN//model.pth" # runid: 
++    #model_path_dir = "mlruns/0/models/LIFFFN/24/model.pth" # runid: cc75ff82496a4dc6896f2464898f774f
+     #model_path_dir = "mlruns/0/models/LIFFFN_16ch//model.pth" # runid: 
+-    #model_path_dir = "mlruns/0/models/LIFFFN_8ch//model.pth" # runid: 
++    #model_path_dir = "mlruns/0/models/LIFFFN_8ch//model.pth" # runid: 4899a1984ba74c91a44925426aa7c397
+     #model_path_dir = "mlruns/0/models/LIFFFN_4ch//model.pth" # runid: 
++    #model_path_dir = "mlruns/0/models/LIFFFN_short//model.pth" # runid:
++    #model_path_dir = "mlruns/0/models/LIFFFN_16ch_short//model.pth" # runid: 
++    #model_path_dir = "mlruns/0/models/LIFFFN_8ch_short//model.pth" # runid: f056dc2aa6e04f20b7760408eb563f1c
++    #model_path_dir = "mlruns/0/models/LIFFFN_4ch_short//model.pth" # runid:
+     
+     model = eval(config["model"]["name"])(config["model"]).to(device)
+     #model = load_model(args.runid, model, device) #                                         MODEL PATH AUTOMATIC (from runid) --------------------
+diff --git a/models/SNNtorch_spiking_submodules.py b/models/SNNtorch_spiking_submodules.py
+index 5edc5bd..843c0e8 100644
+--- a/models/SNNtorch_spiking_submodules.py
++++ b/models/SNNtorch_spiking_submodules.py
+@@ -296,4 +296,46 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
+         # Create new state compatible with original interface
+         new_state = torch.stack([mem_out, spk_out])
+ 
+-        return spk_out, new_state
+\ No newline at end of file
++        return spk_out, new_state
++
++class LIFBlockFunction(torch.autograd.Function):
++    @staticmethod
++    def forward(ctx, input_current, prev_mem, beta, threshold, hard_reset):
++        if prev_mem is None:
++            prev_mem = torch.zeros_like(input_current)
++        mem = beta * prev_mem + input_current
++        spk = (mem >= threshold).float()
++        if hard_reset:
++            mem = mem * (1 - spk)
++        else:
++            mem = mem - spk * threshold
++        return spk, mem
++
++    @staticmethod
++    def symbolic(g, input_current, prev_mem, beta, threshold, hard_reset):
++        return g.op(
++            "LeakyLIF",
++            input_current,
++            prev_mem,
++            beta,
++            threshold,
++            hard_reset_i=int(hard_reset)
++        )
++
++class LIF_forONNX(nn.Module):
++    def __init__(self, beta, threshold, hard_reset=True, learn_beta=None, learn_threshold=None, reset_mechanism=None, reset_delay=None):
++        super().__init__()
++        self.beta = beta
++        self.threshold = threshold
++        self.hard_reset = hard_reset
++        self.learn_beta = learn_beta
++        self.learn_threshold = learn_threshold
++        self.reset_mechanism = reset_mechanism
++        self.reset_delay = reset_delay
++
++    def forward(self, input_current, prev_mem):
++        return LIFBlockFunction.apply(input_current, prev_mem, self.beta, self.threshold, self.hard_reset)
++
++    def detach_hidden(self):
++        # No hidden state to detach, so just pass
++        pass
+\ No newline at end of file
+diff --git a/train_flow.py b/train_flow.py
+index a89211d..a19df5d 100644
+--- a/train_flow.py
++++ b/train_flow.py
+@@ -12,11 +12,13 @@ from models.model import (
+     FireNet,
+     FireNet_short,
+     FireFlowNet,
++    FireFlowNet_short,
+ )
+ from models.model import (
+     LIFFireNet,
+     LIFFireNet_short,
+     LIFFireFlowNet,
++    LIFFireFlowNet_short,
+ )
+ from utils.gradients import get_grads
+ from utils.utils import load_model, save_csv, save_diff, save_model
+diff --git a/utils/utils.py b/utils/utils.py
+index e1f7356..c0749cd 100644
+--- a/utils/utils.py
++++ b/utils/utils.py
+@@ -26,7 +26,7 @@ def load_model(prev_runid, model, device, model_path_dir=""):
+         # Check if the loaded object is a dictionary (your new format) or a model object (old format)
+         if isinstance(checkpoint, dict):
+             if 'model_state_dict' in checkpoint:
+-                model.load_state_dict(checkpoint['model_state_dict'])
++                model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+             else:
+                 # Fallback: assume the dict itself is the state dict
+                 model.load_state_dict(checkpoint)

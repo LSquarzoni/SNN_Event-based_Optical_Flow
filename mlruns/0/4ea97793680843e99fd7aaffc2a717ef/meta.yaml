@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/4ea97793680843e99fd7aaffc2a717ef/artifacts
+end_time: 1778773087590
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 4ea97793680843e99fd7aaffc2a717ef
+run_name: righteous-fish-657
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1757866271598
+status: 3
+tags: []
+user_id: msc25h1

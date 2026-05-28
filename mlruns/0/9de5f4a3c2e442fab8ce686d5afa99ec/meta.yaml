@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/9de5f4a3c2e442fab8ce686d5afa99ec/artifacts
+end_time: 1777979266890
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 9de5f4a3c2e442fab8ce686d5afa99ec
+run_name: righteous-flea-955
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777967846664
+status: 3
+tags: []
+user_id: msc25h1

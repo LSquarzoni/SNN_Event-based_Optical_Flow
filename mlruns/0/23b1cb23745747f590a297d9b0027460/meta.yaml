@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/23b1cb23745747f590a297d9b0027460/artifacts
+end_time: 1778058474590
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 23b1cb23745747f590a297d9b0027460
+run_name: unruly-robin-566
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1777977539316
+status: 3
+tags: []
+user_id: msc25h1

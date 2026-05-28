@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/7b3c8e69807d44c79abc682e96ff57e1/artifacts
+end_time: 1778752623098
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: 7b3c8e69807d44c79abc682e96ff57e1
+run_name: big-mink-256
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1757664408541
+status: 3
+tags: []
+user_id: msc25h1

@@ -1,0 +1,124 @@
+diff --git a/.gitignore b/.gitignore
+index c3dc408..f01a43e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -12,3 +12,4 @@ exported_models/
+ /runs
+ /voltage_analysis
+ TEBN_MPBN_GUIDE.md
++plot_normalization_comparison.py
+diff --git a/configs/train_SNN.yml b/configs/train_SNN.yml
+index 930ca04..ae1382a 100644
+--- a/configs/train_SNN.yml
++++ b/configs/train_SNN.yml
+@@ -16,7 +16,7 @@ model:
+     round_encoding: False # for voxel encoding
+     norm_input: False # normalize input
+     num_bins: 2
+-    base_num_channels: 32
++    base_num_channels: 16
+     kernel_size: 3
+     activations: [arctanspike, arctanspike] # activations for ff and rec neurons
+     mask_output: True
+@@ -45,11 +45,6 @@ loss:
+ optimizer:
+     name: Adam
+     lr: 0.0002
+-    # name: SGD
+-    # lr: 0.0001  # Lower than Adam, start conservative
+-    # momentum: 0.9
+-    # weight_decay: 0.0001  # Small regularization helps stability
+-    # nesterov: True  # Nesterov momentum is smoother
+ 
+ loader:
+     n_epochs: 100
+diff --git a/eval_flow.py b/eval_flow.py
+index 0adce66..5afef1f 100644
+--- a/eval_flow.py
++++ b/eval_flow.py
+@@ -131,9 +131,11 @@ def test(args, config_parser):
+     #model_path_dir = "mlruns/0/models/LIFFN_128x128/5/model.pth" # runid: 84cfb35b11e749d891d8d17b56fa75e0
+     
+     # NORMALIZATION MODELS:
+-    #model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
++    model_path_dir = "mlruns/0/models/LIFFN_BN/33/model.pth" # runid: ebbe836259ba488fa1714c7c36a5b3da
+     #model_path_dir = "mlruns/0/models/LIFFN_TEBN/30/model.pth" # runid: 4dbd002b28d448f59d620c2d94626907
+-    model_path_dir = "mlruns/0/models/LIFFN_MPBN/27/model.pth" # runid: 4a07c11db1f04d50ae354b0919471be4
++    #model_path_dir = "mlruns/0/models/LIFFN_MPBN/27/model.pth" # runid: 4a07c11db1f04d50ae354b0919471be4
++    #model_path_dir = "mlruns/0/models/LIFFN_GN/48/model.pth" # runid: 5be494fe70934ca4b5585df4d1384e53
++    #model_path_dir = "mlruns/0/models/LIFFN_GN2/25/model.pth" # runid: d48a0fecb3744a878094155524f3cd91
+     
+     model = eval(config["model"]["name"])(config["model"]).to(device)
+     
+diff --git a/models/SNNtorch_spiking_submodules.py b/models/SNNtorch_spiking_submodules.py
+index 173fe98..0529ca4 100644
+--- a/models/SNNtorch_spiking_submodules.py
++++ b/models/SNNtorch_spiking_submodules.py
+@@ -247,9 +247,8 @@ class SNNtorch_ConvLIF(nn.Module):
+         if tebn:
+             self.bn = TEBN(hidden_size, num_timesteps=num_timesteps, momentum=0.1, eps=1e-5)
+         else:
+-            self.bn = nn.GroupNorm(num_groups=max(1, hidden_size // 8), num_channels=hidden_size)
+-            # self.bn = nn.LayerNorm(hidden_size)
+-            # self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
++            #self.bn = nn.GroupNorm(num_groups=max(1, hidden_size // 8), num_channels=hidden_size)
++            self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+         
+         self.tebn_enabled = tebn
+         self.num_timesteps = num_timesteps
+@@ -472,9 +471,8 @@ class SNNtorch_ConvLIFRecurrent(nn.Module):
+         if tebn:
+             self.bn = TEBN(hidden_size, num_timesteps=num_timesteps, momentum=0.1, eps=1e-5)
+         else:
+-            self.bn = nn.GroupNorm(num_groups=max(1, hidden_size // 8), num_channels=hidden_size)
+-            # self.bn = nn.LayerNorm(hidden_size)
+-            # self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
++            #self.bn = nn.GroupNorm(num_groups=max(1, hidden_size // 8), num_channels=hidden_size)
++            self.bn = nn.BatchNorm2d(hidden_size, momentum=0.1, eps=1e-5)
+         
+         self.tebn_enabled = tebn
+         self.num_timesteps = num_timesteps
+diff --git a/train_flow.py b/train_flow.py
+index 62c45a5..525f324 100644
+--- a/train_flow.py
++++ b/train_flow.py
+@@ -90,6 +90,10 @@ def train(args, config_parser):
+     grads_w = []
+     checkpoint_counter = 0  # Counter for checkpoint folders
+     last_checkpoint_path = None  # Path to the last saved checkpoint
++    
++    """ # Anti-overfitting tracking
++    consecutive_small_loss_decrease = 0
++    min_loss_decrease_threshold = 1e-4  # Threshold to detect plateau """
+ 
+     # training loop
+     data.shuffle()
+@@ -114,6 +118,19 @@ def train(args, config_parser):
+                     # Use training loss for model selection
+                     current_metric = avg_train_loss
+                     best_metric = best_loss
++                    
++                    """ # Track loss decrease for overfitting detection
++                    loss_decrease = best_loss - current_metric
++                    if loss_decrease < min_loss_decrease_threshold:
++                        consecutive_small_loss_decrease += 1
++                        print(f"  Warning: Small loss decrease ({loss_decrease:.6f}). Overfitting risk: {consecutive_small_loss_decrease}/5")
++                    else:
++                        consecutive_small_loss_decrease = 0
++                    
++                    # Trigger early stopping if loss barely decreases for 5 epochs (late-stage overfitting)
++                    if consecutive_small_loss_decrease >= 5:
++                        print(f"  Early stopping: Loss plateaued for {consecutive_small_loss_decrease} epochs")
++                        end_train = True """
+ 
+                     # Save model if metric improves
+                     if current_metric < best_metric - 1e-6:
+@@ -126,7 +143,7 @@ def train(args, config_parser):
+                                 print(f"Warning: Could not delete previous checkpoint: {e}")
+                         
+                         # Create new checkpoint folder with incremented counter
+-                        base_model_path = "mlruns/0/models/LIFFN_GN/"
++                        base_model_path = "mlruns/0/models/LIFFN_BN_16ch/"
+                         model_save_path = os.path.join(base_model_path, str(checkpoint_counter))
+                         
+                         try:

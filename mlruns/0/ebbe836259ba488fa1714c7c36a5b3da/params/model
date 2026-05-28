@@ -1,0 +1,1 @@
+{'name': 'LIFFireNet', 'encoding': 'cnt', 'round_encoding': False, 'norm_input': False, 'num_bins': 2, 'base_num_channels': 32, 'kernel_size': 3, 'activations': ['arctanspike', 'arctanspike'], 'mask_output': True, 'quantization': {'enabled': False, 'PTQ': False, 'Conv_only': False}}

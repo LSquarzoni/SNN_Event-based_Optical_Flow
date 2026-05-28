@@ -1,0 +1,14 @@
+artifact_uri: file:///home/msc25h1/event_flow/mlruns/0/d27de9a1834748f8857b891ab6eba05e/artifacts
+end_time: 1778681002780
+entry_point_name: ''
+experiment_id: '0'
+lifecycle_stage: active
+run_id: d27de9a1834748f8857b891ab6eba05e
+run_name: resilient-sponge-489
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1757490735485
+status: 3
+tags: []
+user_id: msc25h1
