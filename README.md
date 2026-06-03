@@ -343,6 +343,8 @@ vis:
     store: False         # Enable to save videos of the inference during evaluation
 ```
 
+When storing a video of the inference, many separate videos will be saved under the `result_inference/<model>/results/` folder: the most informative result is saved as `stitched.mp4`, which provides a combined visualization of the input, the output, the ground truth and an error heatmap; based on the inference resolution, frames will be upscaled to the full 256x256 resolution, to make the visualization easier (the technique used is a simple pixel repetition, to avoid altering the statistics of the frames). One video is produced for every sequence.
+
 ### Hot Pixel Filtering
 
 Remove noisy pixels from event data:

@@ -40,6 +40,9 @@ def log_results(runid, results, path, eval_id):
         yaml.dump(results, outfile, default_flow_style=False)
 
     try:
+        # End any active run first
+        if mlflow.active_run():
+            mlflow.end_run()
         mlflow.start_run(runid)
         mlflow.log_artifact(yaml_filename)
         mlflow.end_run()

@@ -155,6 +155,7 @@ def test(args, config_parser):
     val_results = {}
     end_test = False
     activity_log = None
+    has_completed_first_pass = False  # Track if we've completed processing the first file
     try:
         with torch.no_grad():
             while True:
@@ -163,8 +164,13 @@ def test(args, config_parser):
                         data.new_seq = False
                         activity_log = None
                         model.reset_states()
-                    # finish inference loop
-                    if data.seq_num >= len(data.files):
+                        # Mark when we transition from first file to second file
+                        if data.batch_idx[0] == 1:
+                            has_completed_first_pass = True
+                    
+                    # Finish inference loop after all files have been processed once
+                    # (when batch_idx would wrap back to start after completing all files)
+                    if has_completed_first_pass and data.batch_idx[0] >= len(data.files):
                         end_test = True
                         break
                     # forward pass

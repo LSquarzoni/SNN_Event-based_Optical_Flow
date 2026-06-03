@@ -20,6 +20,10 @@ metrics:
     flow_scaling: 128
     heat_map: False
 
+loss:
+    flow_regul_weight: 0.001
+    overwrite_intermediate: False
+
 loader:
     batch_size: 1
     resolution: [256, 256] # H x W, if the resolution is smaller than the input one, frames and events will be cropped at the center

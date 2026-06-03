@@ -525,9 +525,9 @@ def apply_per_layer_quantization_ranges(model, layer_stats, safety_margin=0.001,
         # This gives smaller step size and better precision
         # Safety margin is subtracted (not added) to make range tighter
         
-        if clip_extreme_negatives and min_obs < -LOWER_NEG_BOUND:
+        if clip_extreme_negatives and min_obs < LOWER_NEG_BOUND:
             # Clip very extreme negatives to -x (prevents outliers from wasting quantization levels)
-            lower_bound = -LOWER_NEG_BOUND
+            lower_bound = LOWER_NEG_BOUND
         else:
             # For negative values: round TOWARD zero (less negative) for tighter range
             # e.g., observed -45.7 → -45 (ceil toward zero)
@@ -540,8 +540,8 @@ def apply_per_layer_quantization_ranges(model, layer_stats, safety_margin=0.001,
         
         # Enforce minimum floor of -x for small negative ranges
         # This ensures numerical stability and avoids overly tight ranges
-        if lower_bound > -UPPER_NEG_BOUND:
-            lower_bound = -UPPER_NEG_BOUND
+        if lower_bound > UPPER_NEG_BOUND:
+            lower_bound = UPPER_NEG_BOUND
         
         # Upper bound: round TOWARD zero (less positive) for tighter range
         # e.g., observed 0.94 → 0 (floor toward zero)
@@ -1021,6 +1021,9 @@ def test_quantized(args, config_parser):
         
         # Start MLflow run only if using MLflow
         if use_mlflow:
+            # End any existing run before starting a new one
+            if mlflow.active_run():
+                mlflow.end_run()
             mlflow.set_experiment(config["experiment"])
             mlflow.start_run()
             mlflow.log_params(config)

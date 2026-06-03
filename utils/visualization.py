@@ -247,13 +247,7 @@ class Visualization:
         else:
             height, width = 256, 256  # fallback
         
-        # Skip saving if not enough time has passed
-        if ts is not None:
-            if self.last_store_ts is not None and (ts - self.last_store_ts) < self.store_interval:
-                return
-            self.last_store_ts = ts
-
-        # check if new sequence
+        # Check if new sequence (do this BEFORE store_interval check so folders are always created)
         path_to = self.store_dir + sequence + "/"
         if not os.path.exists(path_to):
             # If we have active video writers from a previous sequence, close them
@@ -279,6 +273,13 @@ class Visualization:
             self.img_idx = 0
             # reset store timestamp so first frames of the new sequence are stored immediately
             self.last_store_ts = None
+            print(f"\n[FOLDER_CREATE] Created directory structure for sequence: {sequence}")
+        
+        # Skip saving if not enough time has passed (after folder creation check)
+        if ts is not None:
+            if self.last_store_ts is not None and (ts - self.last_store_ts) < self.store_interval:
+                return
+            self.last_store_ts = ts
 
         # input events
         event_image = np.zeros((height, width))
@@ -418,6 +419,15 @@ class Visualization:
             flow_masked = flow_frame_for_stitch.copy()
             # Apply event mask if available
             if event_mask_np is not None:
+                # Resize mask to match flow resolution if needed
+                if event_mask_np.shape != flow_masked.shape[:2]:
+                    event_mask_np_resized = cv2.resize(
+                        event_mask_np, 
+                        (flow_masked.shape[1], flow_masked.shape[0]),
+                        interpolation=cv2.INTER_NEAREST
+                    )
+                    event_mask_np = event_mask_np_resized
+                
                 # Expand mask to match flow dimensions (2 channels)
                 mask_2d = np.expand_dims(event_mask_np, axis=2)
                 flow_masked = flow_masked * mask_2d
@@ -432,8 +442,19 @@ class Visualization:
             gtflow_masked = gtflow_npy_for_stitch.copy()
             # Apply event mask if available
             if event_mask_np is not None:
+                # Resize mask to match gtflow resolution if needed
+                if event_mask_np.shape != gtflow_masked.shape[:2]:
+                    event_mask_resized = cv2.resize(
+                        event_mask_np,
+                        (gtflow_masked.shape[1], gtflow_masked.shape[0]),
+                        interpolation=cv2.INTER_NEAREST
+                    )
+                    event_mask_for_gt = event_mask_resized
+                else:
+                    event_mask_for_gt = event_mask_np
+                
                 # Expand mask to match flow dimensions
-                mask_2d = np.expand_dims(event_mask_np, axis=2)
+                mask_2d = np.expand_dims(event_mask_for_gt, axis=2)
                 gtflow_masked = gtflow_masked * mask_2d
             
             # Convert masked flow to image
@@ -460,9 +481,19 @@ class Visualization:
             
             # Apply event mask to show error only where events occurred
             if event_mask_np is not None:
+                # Resize mask to match error_map resolution if needed
+                if event_mask_np.shape != error_map_np.shape:
+                    error_mask_resized = cv2.resize(
+                        event_mask_np,
+                        (error_map_np.shape[1], error_map_np.shape[0]),
+                        interpolation=cv2.INTER_NEAREST
+                    )
+                else:
+                    error_mask_resized = event_mask_np
+                
                 # Mask the error heatmap: set masked-out pixels to black
                 # Expand mask from [H, W] to [H, W, 3] for RGB operation
-                mask_expanded = np.expand_dims(event_mask_np, axis=2)
+                mask_expanded = np.expand_dims(error_mask_resized, axis=2)
                 # Scale mask to 0-1 range and multiply, keeping uint8
                 error_heatmap_rgb = (error_heatmap_rgb.astype(np.float32) * mask_expanded).astype(np.uint8)
             
