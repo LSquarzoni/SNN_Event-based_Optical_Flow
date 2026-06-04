@@ -444,10 +444,10 @@ Once the custom operator is installed:
 
 ```bash
 # Export standard model
-python Model_export.py --runid <mlflow_run_id>
+python Model_export.py --runid <mlflow_run_id> --fp32
 ```
 
-**Note**: The export scripts automatically use the custom ONNX operator instead of the regular SNNtorch modules during export.
+**Note**: The export scripts automatically use the custom ONNX operator instead of the regular SNNtorch modules during export, if everything is set up correctly.
 
 ### INT8 Quantized Export (DeepQuant)
 
