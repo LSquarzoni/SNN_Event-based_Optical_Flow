@@ -4,7 +4,7 @@ This repository implements Spiking Neural Networks (SNNs) for event-based optica
 
 ---
 
-![me](./plots and images/DEMO.mp4)
+![me](./plots and images/DEMO.gif)
 
 ## 📋 Table of Contents
 
