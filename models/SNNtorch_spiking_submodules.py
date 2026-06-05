@@ -573,9 +573,8 @@ class custom_ConvLIFRecurrent(nn.Module):
                 output_quant=Int8ActPerTensorFloat,
                 return_quant_tensor=False,
             )
-            self.quant_identity_add = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
             # Quantization layers for LIF operator inputs/outputs
-            self.quant_lif_input = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
+            self.quant_identity = QuantIdentity(return_quant_tensor=False)
             self.quant_mem_input = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
             self.quant_spk_output = QuantIdentity(act_quant=Int8ActPerTensorFloat, return_quant_tensor=False)
         else:
@@ -605,16 +604,13 @@ class custom_ConvLIFRecurrent(nn.Module):
             prev_spk = prev_state[1]  # previous spikes
 
         # recurrent current
-        rec = self.rec(prev_spk)
+        rec = self.ff(prev_spk)
         
         if self.quantization_config and self.exporting:
-            rec_q = self.quant_identity_add(rec)
-            ff_q = self.quant_identity_add(ff)
-            total_current = ff_q + rec_q
             # Apply quantization to LIF inputs
-            total_current_q = self.quant_lif_input(total_current)
+            #total_current_q = self.quant_identity(ff) + self.quant_identity(rec)
             mem_q = self.quant_mem_input(mem)
-            out = torch.ops.SNN_implementation.LIF(total_current_q, mem_q, self.beta, self.threshold)
+            out = torch.ops.SNN_implementation.LIF(total_current, mem_q, self.beta, self.threshold)
             # Quantize the raw outputs from LIF
             spk_raw = out[0]  # shape [N, C, H, W]
             mem_raw = out[1]  # shape [N, C, H, W]

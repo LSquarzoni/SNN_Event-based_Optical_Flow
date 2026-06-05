@@ -457,7 +457,9 @@ For hardware deployment with true INT8 quantization, use `Model_export_RealQuant
 python Model_export_RealQuant.py <mlflow_run_id> --config configs/eval_MVSEC.yml
 ```
 
-This script uses **DeepQuant** (required dependency) to export ONNX models with real INT8 precision instead of floating-point quantization-aware operations. Key features:
+This script uses **DeepQuant** (required dependency) to export ONNX models with real INT8 precision instead of floating-point quantization-aware operations. DeepQuant produces an ONNX graph which integrates all quantization and de-quantization operations, both for convolutions and LIF neurons; to get the really-quantized, int8 precision graph, Deeploy (or some other tool) is required. 
+
+Key features:
 
 - **True INT8 tensors**: Quantizes weights and activations to 8-bit integers
 - **Calibration-based quantization**: Uses Post-Training Quantization (PTQ) with calibration data
@@ -465,7 +467,7 @@ This script uses **DeepQuant** (required dependency) to export ONNX models with 
 - **ONNX QDQ format**: Exports models with QuantizeLinear/DequantizeLinear operators
 
 **Requirements**:
-- DeepQuant library (for `exportBrevitas` function) - since some changes to the original project have been introduced to make the LIF kernel compatible, it's recommended to use my personal [Deepquant repo](https://github.com/LSquarzoni/DeepQuant) (follow the documentation to download and install Deepquant into the conda environment)
+- DeepQuant library (for `exportBrevitas` function) - since some changes to the original project have been introduced to make the LIF kernel compatible, it's recommended to use my personal [DeepQuant repo](https://github.com/LSquarzoni/DeepQuant) (follow the documentation to download and install Deepquant into the conda environment)
 - Brevitas (already in requirements.txt)
 - QAT-trained model or model with quantization configuration
 
