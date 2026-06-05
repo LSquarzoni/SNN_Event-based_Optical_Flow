@@ -457,7 +457,7 @@ For hardware deployment with true INT8 quantization, use `Model_export_RealQuant
 python Model_export_RealQuant.py <mlflow_run_id> --config configs/eval_MVSEC.yml
 ```
 
-This script uses **DeepQuant** (required dependency) to export ONNX models with real INT8 precision instead of floating-point quantization-aware operations. DeepQuant produces an ONNX graph which integrates all quantization and de-quantization operations, both for convolutions and LIF neurons; to get the really-quantized, int8 precision graph, Deeploy (or some other tool) is required. 
+This script uses **DeepQuant** (required dependency) to export ONNX models with real INT8 precision instead of floating-point quantization-aware operations. DeepQuant produces an ONNX graph which integrates all quantization and de-quantization operations, both for convolutions and LIF neurons; to get the really-quantized, int8 precision graph, Deeploy (or some other tool) is required. My version of [Deeploy](https://github.com/LSquarzoni/Deeploy/tree/feature/lif-kernel), which includes the LIF implementation, is made available.
 
 Key features:
 
