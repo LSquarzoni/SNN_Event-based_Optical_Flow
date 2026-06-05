@@ -418,6 +418,7 @@ class custom_ConvLIF(nn.Module):
         norm=None,
         quantization_config=None,
         exporting=False,
+        resolution=None,
     ):
         super().__init__()
 
@@ -426,6 +427,11 @@ class custom_ConvLIF(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.exporting = exporting  # Store export mode flag
+        
+        # Get resolution from config, default to 256x256 if not provided
+        if resolution is None:
+            resolution = [256, 256]
+        self.resolution = resolution
         
         # Per-channel parameters matching original implementation
         self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
@@ -457,7 +463,7 @@ class custom_ConvLIF(nn.Module):
         nn.init.uniform_(self.ff.weight, -w_scale, w_scale)
 
         # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
-        self.init_mem = torch.rand(1, hidden_size, 256, 256) * 0.8
+        self.init_mem = torch.rand(1, hidden_size, self.resolution[0], self.resolution[1]) * 0.8
 
     def forward(self, input_, prev_state, residual=0):
         ff = self.ff(input_)
@@ -522,6 +528,7 @@ class custom_ConvLIFRecurrent(nn.Module):
         norm=None,
         quantization_config=None,
         exporting=False,
+        resolution=None,
     ):
         super().__init__()
 
@@ -530,6 +537,11 @@ class custom_ConvLIFRecurrent(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.exporting = exporting  # Store export mode flag
+        
+        # Get resolution from config, default to 256x256 if not provided
+        if resolution is None:
+            resolution = [256, 256]
+        self.resolution = resolution
         
         # Per-channel parameters matching original implementation
         self.beta = nn.Parameter(torch.empty(hidden_size, 1, 1).uniform_(leak[0], leak[1]))
@@ -551,7 +563,7 @@ class custom_ConvLIFRecurrent(nn.Module):
                 return_quant_tensor=False,
             )
             self.rec = QuantConv2d(
-                input_size,
+                hidden_size,
                 hidden_size,
                 kernel_size,
                 padding=padding,
@@ -577,9 +589,9 @@ class custom_ConvLIFRecurrent(nn.Module):
         nn.init.uniform_(self.rec.weight, -w_scale_rec, w_scale_rec)
 
         # init_mem: values in [0.0, 0.8], shape [1, C, H, W]
-        self.init_mem = torch.rand(1, hidden_size, 256, 256) * 0.8
+        self.init_mem = torch.rand(1, hidden_size, self.resolution[0], self.resolution[1]) * 0.8
         # init_prev_spk: random binary {0,1} values with shape [1, C, H, W]
-        self.init_prev_spk = (torch.rand(1, hidden_size, 256, 256) > 0.5).to(torch.float32)
+        self.init_prev_spk = (torch.rand(1, hidden_size, self.resolution[0], self.resolution[1]) > 0.5).to(torch.float32)
 
     def forward(self, input_, prev_state, residual=0):
         ff = self.ff(input_)
@@ -623,6 +635,6 @@ class custom_ConvLIFRecurrent(nn.Module):
             new_state = torch.stack([mem_out, spk_raw], dim=0)
         else:
             # Create new state compatible with original interface
-            new_state = torch.stack([mem_out, spk_out])
+            new_state = torch.stack([mem_out, spk_out], dim=0)
 
         return spk_out, new_state

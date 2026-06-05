@@ -11,6 +11,7 @@ import numpy as np
 from configs.parser import YAMLParser
 from dataloader.h5 import H5Loader
 from models.model import LIFFireNet, LIFFireFlowNet, LIFFireNet_short, LIFFireFlowNet_short
+from models.SNNtorch_spiking_submodules import custom_ConvLIF, custom_ConvLIFRecurrent
 from utils.utils import load_model
 from torch.onnx import symbolic_helper as sym_help
 from DeepQuant.ExportBrevitas import exportBrevitas
@@ -49,6 +50,101 @@ register_custom_op_symbolic('SNN_implementation::LIF', lif_leaky_symbolic, 18)
 print("✓ Registered LIF operator for legacy TorchScript ONNX exporter")
 
 cf.IGNORE_MISSING_KEYS = True
+
+def replace_lif_layers_with_custom(model, resolution=None):
+    """
+    Replace SNNtorch LIF layers with custom LIF implementations for FX tracing + ONNX export.
+    Preserves weights and configuration from original layers.
+    
+    This is necessary because SNNtorch's LIF neuron uses control flow (if statements on tensor shapes)
+    which cannot be traced by PyTorch FX tracer.
+    
+    :param model: PyTorch model to modify in-place
+    :param resolution: Model resolution [H, W], defaults to [256, 256]
+    :return: Modified model
+    """
+    from models.SNNtorch_spiking_submodules import SNNtorch_ConvLIF, SNNtorch_ConvLIFRecurrent
+    
+    if resolution is None:
+        resolution = [256, 256]
+    
+    replaced_count = 0
+    
+    # Build a list of (parent, attr_name, module) tuples
+    modules_to_replace = []
+    
+    for name, module in model.named_modules():
+        for attr_name, child_module in module.named_children():
+            if isinstance(child_module, SNNtorch_ConvLIF):
+                modules_to_replace.append((module, attr_name, child_module, 'ConvLIF'))
+            elif isinstance(child_module, SNNtorch_ConvLIFRecurrent):
+                modules_to_replace.append((module, attr_name, child_module, 'ConvLIFRecurrent'))
+    
+    # Replace modules
+    for parent_module, attr_name, old_module, layer_type in modules_to_replace:
+        full_name = f"{parent_module.__class__.__name__}.{attr_name}"
+        print(f"Replacing {layer_type} at {full_name}")
+        
+        if layer_type == 'ConvLIF':
+            # Create new custom layer with same configuration
+            new_layer = custom_ConvLIF(
+                input_size=old_module.input_size,
+                hidden_size=old_module.hidden_size,
+                kernel_size=old_module.ff.kernel_size[0],
+                stride=old_module.ff.stride[0],
+                activation="arctanspike",
+                leak=(0.0, 1.0),
+                thresh=(0.0, 0.8),
+                learn_leak=True,
+                learn_thresh=True,
+                hard_reset=True,
+                detach=old_module.detach,
+                norm=None,
+                quantization_config={"enabled": old_module.quantization_config},
+                exporting=old_module.exporting,
+                resolution=resolution,
+            )
+            
+            # Copy weights and parameters
+            new_layer.ff.weight.data.copy_(old_module.ff.weight.data)
+            new_layer.beta.data.copy_(old_module.lif.beta.data)
+            new_layer.threshold.data.copy_(old_module.lif.threshold.data)
+            
+        elif layer_type == 'ConvLIFRecurrent':
+            # Create new custom layer with same configuration
+            new_layer = custom_ConvLIFRecurrent(
+                input_size=old_module.input_size,
+                hidden_size=old_module.hidden_size,
+                kernel_size=old_module.ff.kernel_size[0],
+                activation="arctanspike",
+                leak=(0.0, 1.0),
+                thresh=(0.0, 0.8),
+                learn_leak=True,
+                learn_thresh=True,
+                hard_reset=True,
+                detach=old_module.detach,
+                norm=None,
+                quantization_config={"enabled": old_module.quantization_config},
+                exporting=old_module.exporting,
+                resolution=resolution,
+            )
+            
+            # Copy weights and parameters
+            new_layer.ff.weight.data.copy_(old_module.ff.weight.data)
+            new_layer.rec.weight.data.copy_(old_module.rec.weight.data)
+            new_layer.beta.data.copy_(old_module.lif.beta.data)
+            new_layer.threshold.data.copy_(old_module.lif.threshold.data)
+        
+        # Replace the module in the parent
+        setattr(parent_module, attr_name, new_layer)
+        replaced_count += 1
+    
+    if replaced_count > 0:
+        print(f"\n✓ Successfully replaced {replaced_count} LIF layers with custom implementations\n")
+    else:
+        print("\n⚠ No LIF layers found to replace\n")
+    
+    return model
 
 def calibrate_model(calibration_loader, quant_model, device, num_batches=1000):
     """Calibrate the quantized model"""
@@ -99,6 +195,16 @@ def export(args, config_parser):
         pass
 
     model.eval()
+    
+    # Replace SNNtorch LIF layers with custom implementations for FX tracing
+    # This is necessary because SNNtorch's LIF neurons use control flow that can't be traced
+    print("\n" + "="*80)
+    print("REPLACING LIF LAYERS WITH CUSTOM IMPLEMENTATIONS FOR FX TRACING")
+    print("="*80)
+    # Get resolution from loader config
+    loader_resolution = config.get("loader", {}).get("resolution", [256, 256])
+    model = replace_lif_layers_with_custom(model, resolution=loader_resolution)
+    print("="*80 + "\n")
     
     # Data loader
     data = H5Loader(config, config["model"]["num_bins"])
@@ -152,9 +258,9 @@ def export(args, config_parser):
                     self.model = model
                 
                 def forward(self, event_cnt):
-                    # Unpack the tuple input and call model with return_dict=False
-                    # to get flow tensor directly without dictionary operations
-                    flow = self.model(event_cnt, log=False, return_dict=False)
+                    # Pass with keyword arguments to avoid confusion
+                    # event_voxel is None for export (uses event_cnt encoding path)
+                    flow = self.model(event_voxel=None, event_cnt=event_cnt, log=False, return_dict=False)
                     return flow
             
             wrapped_model = ModelWrapper(model)

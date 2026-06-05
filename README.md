@@ -465,7 +465,7 @@ This script uses **DeepQuant** (required dependency) to export ONNX models with 
 - **ONNX QDQ format**: Exports models with QuantizeLinear/DequantizeLinear operators
 
 **Requirements**:
-- DeepQuant library (for `exportBrevitas` function)
+- DeepQuant library (for `exportBrevitas` function) - since some changes to the original project have been introduced to make the LIF kernel compatible, it's recommended to use my personal [Deepquant repo](https://github.com/LSquarzoni/DeepQuant) (follow the documentation to download and install Deepquant into the conda environment)
 - Brevitas (already in requirements.txt)
 - QAT-trained model or model with quantization configuration
 
